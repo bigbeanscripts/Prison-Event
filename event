@@ -1,3 +1,4 @@
+-- Prison
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local Window = Fluent:CreateWindow({
     Title = "Prisoner Event",
@@ -10,7 +11,7 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Main = Window:AddTab({ Title = "Prison Event", Icon = "shovel" })
+    Main = Window:AddTab({ Title = "Prison Event", Icon = "siren" })
 
 }
 
@@ -123,7 +124,88 @@ AutoClickToggle:OnChanged(function()
     end
 end)
 
--- Empty sections and previous code remain the same...
+local NPCSection = Tabs.Main:AddSection("Auto NPC Farm")
+
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local npcFolderPath = workspace.GameObjects.ArmWrestling.PrisonEvent.NPC
+local snowstormPath = workspace.GameObjects.RngNPCs["PrisonEvent-Underground"].Npc
+local isAutoFarming = false
+local isBossFighting = false
+
+local function updateProximityPrompts(folder)
+    for _, descendant in ipairs(folder:GetDescendants()) do
+        if descendant:IsA("ProximityPrompt") then
+            descendant.HoldDuration = 0
+            descendant.Style = Enum.ProximityPromptStyle.Default
+            descendant.MaxActivationDistance = 6
+        end
+    end
+end
+
+local function simulateKeyPress()
+    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
+    task.wait(1)
+    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
+end
+
+local AutoBeatNPCToggle = Tabs.Main:AddToggle("AutoBeatNPC", {
+    Title = "Auto Beat NPC",
+    Description = "Auto Fight Underground NPCs",
+    Default = false
+})
+
+AutoBeatNPCToggle:OnChanged(function()
+    isAutoFarming = AutoBeatNPCToggle.Value
+    
+    if isAutoFarming then
+        -- Start proximity prompt updates
+        spawn(function()
+            while true do
+                if not AutoBeatNPCToggle.Value then break end
+                updateProximityPrompts(snowstormPath)
+                wait(1)
+            end
+        end)
+        
+        -- Start key simulation
+        spawn(function()
+            while true do
+                if not AutoBeatNPCToggle.Value then break end
+                
+                local npcs = snowstormPath:GetChildren()
+                if #npcs > 0 then
+                    simulateKeyPress()
+                end
+                
+                task.wait(1)
+            end
+        end)
+        
+        -- Main NPC farming loop
+        spawn(function()
+            while true do
+                if not AutoBeatNPCToggle.Value then break end
+                
+                local npcs = snowstormPath:GetChildren()
+                if #npcs > 0 then
+                    for _, npc in ipairs(npcs) do
+                        if not AutoBeatNPCToggle.Value then break end
+                        
+                        if npc:IsA("Model") and npc:FindFirstChild("Table") and 
+                           npc.Table:FindFirstChild("PlayerRoot") then
+                            local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                            if humanoid then
+                                humanoid.CFrame = npc.Table.PlayerRoot.CFrame
+                                wait(4)
+                            end
+                        end
+                    end
+                end
+                wait(0.1)
+            end
+        end)
+    end
+end)
 
 -- Eggs Section
 local EggSection = Tabs.Main:AddSection("Eggs")
@@ -177,88 +259,7 @@ AutoHatchToggle:OnChanged(function()
     end
 end)
 
-local NPCSection = Tabs.Main:AddSection("Auto NPC Farm")
 
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local npcFolderPath = workspace.GameObjects.ArmWrestling.PrisonEvent.NPC
-local snowstormPath = workspace.GameObjects.RngNPCs["PrisonEvent-Underground"].Npc
-local isAutoFarming = false
-local isBossFighting = false
-
-local function updateProximityPrompts(folder)
-    for _, descendant in ipairs(folder:GetDescendants()) do
-        if descendant:IsA("ProximityPrompt") then
-            descendant.HoldDuration = 0
-            descendant.Style = Enum.ProximityPromptStyle.Default
-            descendant.MaxActivationDistance = 6
-        end
-    end
-end
-
-local function simulateKeyPress()
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    task.wait(0.1)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-end
-
-local AutoBeatNPCToggle = Tabs.Main:AddToggle("AutoBeatNPC", {
-    Title = "Auto Beat NPC",
-    Description = "Auto Fight Underground NPCs",
-    Default = false
-})
-
-AutoBeatNPCToggle:OnChanged(function()
-    isAutoFarming = AutoBeatNPCToggle.Value
-    
-    if isAutoFarming then
-        -- Start proximity prompt updates
-        spawn(function()
-            while true do
-                if not AutoBeatNPCToggle.Value then break end
-                updateProximityPrompts(snowstormPath)
-                wait(1)
-            end
-        end)
-        
-        -- Start key simulation
-        spawn(function()
-            while true do
-                if not AutoBeatNPCToggle.Value then break end
-                
-                local npcs = snowstormPath:GetChildren()
-                if #npcs > 0 then
-                    simulateKeyPress()
-                end
-                
-                task.wait(0.1)
-            end
-        end)
-        
-        -- Main NPC farming loop
-        spawn(function()
-            while true do
-                if not AutoBeatNPCToggle.Value then break end
-                
-                local npcs = snowstormPath:GetChildren()
-                if #npcs > 0 then
-                    for _, npc in ipairs(npcs) do
-                        if not AutoBeatNPCToggle.Value then break end
-                        
-                        if npc:IsA("Model") and npc:FindFirstChild("Table") and 
-                           npc.Table:FindFirstChild("PlayerRoot") then
-                            local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                            if humanoid then
-                                humanoid.CFrame = npc.Table.PlayerRoot.CFrame
-                                wait(2)
-                            end
-                        end
-                    end
-                end
-                wait(0.1)
-            end
-        end)
-    end
-end)
 
 local TowerSection = Tabs.Main:AddSection("Towers")
 
