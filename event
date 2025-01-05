@@ -15,15 +15,69 @@ local Tabs = {
 
 }
 
--- Auto Train Section
+-- Add before sections
+local function GetBestPrisonBag()
+    local player = game.Players.LocalPlayer
+    local prisonKnuckle = player:GetAttribute("TotalPrisonKnuckle") or 0
+    local punchBagData = require(game:GetService("ReplicatedStorage").Data.PunchBags)
+    
+    -- Check VIP first
+    if player:GetAttribute("VIP") then
+        print("Using VIP bag")
+        return "VIP"
+    end
+    
+    -- Find best qualifying tier
+    local bestTier = "Tier1"
+    local highestRequired = 0
+    
+    if punchBagData and punchBagData.PrisonEvent then
+        for tier, data in pairs(punchBagData.PrisonEvent) do
+            if data.StrengthRequired and 
+               prisonKnuckle >= data.StrengthRequired and 
+               data.StrengthRequired > highestRequired then
+                bestTier = tier
+                highestRequired = data.StrengthRequired
+            end
+        end
+    end
+    
+    print(string.format("Selected PunchBag: %s (Required: %d, Current: %d)", 
+        bestTier, highestRequired, prisonKnuckle))
+    return bestTier
+end
+
+local function GetBestPrisonEquipment()
+    local player = game.Players.LocalPlayer
+    local prisonBicep = player:GetAttribute("TotalPrisonBicep") or 0
+    local dumbbellData = require(game:GetService("ReplicatedStorage").Data.Dumbells)
+    local bestDumbell = "Prison1"
+    local highestRequired = 0
+    
+    if dumbbellData and dumbbellData.PrisonEvent then
+        for name, data in pairs(dumbbellData.PrisonEvent) do
+            if data.StrengthRequired and 
+               prisonBicep >= data.StrengthRequired and 
+               data.StrengthRequired > highestRequired then
+                bestDumbell = name
+                highestRequired = data.StrengthRequired
+            end
+        end
+    end
+    
+    print(string.format("Selected Dumbell: %s (Required: %d, Current: %d)",
+        bestDumbell, highestRequired, prisonBicep))
+    return bestDumbell
+end
+
+-- Add Training Section
 local TrainSection = Tabs.Main:AddSection("Auto Train")
 
-local DumbbellDropdown = Tabs.Main:AddDropdown("DumbbellSelect", {
-    Title = "Dumbbell Type",
-    Values = {"Prison1", "Prison2", "Prison3", "Prison4", "Prison5", "Prison6", 
-              "Prison7", "Prison8", "Prison9", "Prison10", "Prison11", "Prison12"},
+local TrainingDropdown = Tabs.Main:AddDropdown("TrainingSelect", {
+    Title = "Select Training Type",
+    Values = {"Dumbells", "PunchBags"},
     Multi = false,
-    Default = "Prison12"
+    Default = "Dumbells"
 })
 
 local AutoTrainToggle = Tabs.Main:AddToggle("AutoTrain", {
@@ -33,28 +87,58 @@ local AutoTrainToggle = Tabs.Main:AddToggle("AutoTrain", {
 
 AutoTrainToggle:OnChanged(function()
     if AutoTrainToggle.Value then
+        -- Equipment/Position check (10s)
         spawn(function()
-            while true do
-                if not AutoTrainToggle.Value then break end
-                local args = {
-                    [1] = "PrisonEvent",
-                    [2] = "Dumbells",
-                    [3] = DumbbellDropdown.Value
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+            while AutoTrainToggle.Value do
+                if TrainingDropdown.Value == "Dumbells" then
+                    local equipment = GetBestPrisonEquipment()
+                    local args = {
+                        [1] = "PrisonEvent",
+                        [2] = "Dumbells",
+                        [3] = equipment
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+                else
+                    local tier = GetBestPrisonBag()
+                    local bag = workspace.Zones.PrisonEvent.Interactables.Training.PunchBags[tier]
+                    if bag then
+                        local bagCFrame = bag:GetPivot()
+                        local teleportPos = bagCFrame * CFrame.new(0, 0, -3)
+                        game.Players.LocalPlayer.Character:PivotTo(teleportPos)
+                        
+                        -- Send stats
+                        local args = {
+                            [1] = "PrisonEvent",
+                            [2] = tier
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
+                    end
+                end
                 wait(10)
             end
         end)
         
+        -- Stats update (0.5s)
         spawn(function()
-            while true do
-                if not AutoTrainToggle.Value then break end
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
+            while AutoTrainToggle.Value do
+                if TrainingDropdown.Value == "Dumbells" then
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
+                else
+                    local tier = GetBestPrisonBag()
+                    local args = {
+                        [1] = "PrisonEvent",
+                        [2] = tier
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
+                end
                 wait(0.5)
             end
         end)
     end
 end)
+
+-- Rest of existing code remains the same...
+
 
 -- Auto Fight Section
 local FightSection = Tabs.Main:AddSection("Auto Fight")
