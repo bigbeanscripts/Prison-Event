@@ -1,19 +1,171 @@
 -- Prison
+-- Create a ScreenGui for our minimize button
+local MinimizeGui = Instance.new("ScreenGui")
+MinimizeGui.Name = "MinimizeGui"
+MinimizeGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
+MinimizeGui.ResetOnSpawn = false
+
+-- Create the minimize button with centered positioning
+local MinimizeButton = Instance.new("TextButton")
+MinimizeButton.Name = "MinimizeButton"
+MinimizeButton.Parent = MinimizeGui
+MinimizeButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+MinimizeButton.BorderColor3 = Color3.fromRGB(50, 50, 50)
+MinimizeButton.AnchorPoint = Vector2.new(0.5, 0.5)
+MinimizeButton.Position = UDim2.new(0.5, 0, 0.5, 0)
+MinimizeButton.Size = UDim2.new(0, 80, 0, 40)
+MinimizeButton.Font = Enum.Font.GothamBold
+MinimizeButton.Text = "Close"
+MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+MinimizeButton.TextSize = 16.000
+
+-- Add corner radius
+local UICorner = Instance.new("UICorner")
+UICorner.CornerRadius = UDim.new(0, 6)
+UICorner.Parent = MinimizeButton
+
+-- Create X button for removal
+local CloseButton = Instance.new("TextButton")
+CloseButton.Name = "CloseButton"
+CloseButton.Parent = MinimizeButton
+CloseButton.BackgroundTransparency = 1
+CloseButton.Position = UDim2.new(1, -20, 0, 0)
+CloseButton.Size = UDim2.new(0, 20, 0, 20)
+CloseButton.Font = Enum.Font.GothamBold
+CloseButton.Text = "×"
+CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+CloseButton.TextSize = 16.000
+CloseButton.ZIndex = 2
+
+-- Close button functionality
+CloseButton.MouseButton1Click:Connect(function()
+    -- Destroy the MinimizeButton and CloseButton
+    MinimizeButton:Destroy()
+    CloseButton:Destroy()
+    -- Optionally, destroy the entire GUI if needed
+    MinimizeGui:Destroy()
+end)
+
+
+
+-- Make button draggable
+local UserInputService = game:GetService("UserInputService")
+local dragging
+local dragStart
+local startPos
+
+MinimizeButton.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = MinimizeButton.Position
+        
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then
+                dragging = false
+            end
+        end)
+    end
+end)
+
+UserInputService.InputChanged:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
+        local delta = input.Position - dragStart
+        MinimizeButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Add hover effects for main button
+MinimizeButton.MouseEnter:Connect(function()
+    game:GetService("TweenService"):Create(MinimizeButton, TweenInfo.new(0.2), {
+        BackgroundColor3 = Color3.fromRGB(40, 40, 40)
+    }):Play()
+end)
+
+MinimizeButton.MouseLeave:Connect(function()
+    game:GetService("TweenService"):Create(MinimizeButton, TweenInfo.new(0.2), {
+        BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+    }):Play()
+end)
+
+-- Add hover effects for close button
+CloseButton.MouseEnter:Connect(function()
+    game:GetService("TweenService"):Create(CloseButton, TweenInfo.new(0.2), {
+        TextColor3 = Color3.fromRGB(255, 100, 100)
+    }):Play()
+end)
+
+CloseButton.MouseLeave:Connect(function()
+    game:GetService("TweenService"):Create(CloseButton, TweenInfo.new(0.2), {
+        TextColor3 = Color3.fromRGB(255, 255, 255)
+    }):Play()
+end)
+
+-- Add shadow
+local Shadow = Instance.new("ImageLabel")
+Shadow.Name = "Shadow"
+Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
+Shadow.BackgroundTransparency = 1
+Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
+Shadow.Size = UDim2.new(1, 10, 1, 10)
+Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
+Shadow.ImageTransparency = 0.5
+Shadow.Image = "rbxassetid://7912134082"
+Shadow.Parent = MinimizeButton
+Shadow.ZIndex = MinimizeButton.ZIndex - 1
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+-- Create window with proper callbacks
 local Window = Fluent:CreateWindow({
-    Title = "Prisoner Event",
-    SubTitle = "by Duckie",
+    Title = "Prison Event",
+    SubTitle = "By Duckie",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
     Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl
+    MinimizeKey = Enum.KeyCode.LeftControl,
+    OnDestroy = function()
+        local fadeOut = game:GetService("TweenService"):Create(MinimizeGui, TweenInfo.new(0.5), {
+            Transparency = 1
+        })
+        fadeOut:Play()
+        fadeOut.Completed:Connect(function()
+            MinimizeGui:Destroy()
+        end)
+    end
 })
 
 local Tabs = {
     Main = Window:AddTab({ Title = "Prison Event", Icon = "siren" })
 
 }
+
+-- Initialize state
+local isMinimized = false
+Window:Minimize(false)
+
+-- Regular minimize/maximize functionality
+MinimizeButton.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    Window:Minimize(isMinimized)
+
+    local textTween = game:GetService("TweenService"):Create(MinimizeButton, TweenInfo.new(0.2), {
+        TextTransparency = 1
+    })
+    
+    textTween:Play()
+    textTween.Completed:Connect(function()
+        MinimizeButton.Text = isMinimized and "Open" or "Close"
+        game:GetService("TweenService"):Create(MinimizeButton, TweenInfo.new(0.2), {
+            TextTransparency = 0
+        }):Play()
+    end)
+end)
+
+-- Close button functionality 
+CloseButton.MouseButton1Click:Connect(function()
+    MinimizeGui:Destroy()
+    Window:Destroy()
+end)
 
 -- Add before sections
 local function GetBestPrisonBag()
@@ -228,7 +380,7 @@ end
 
 local function simulateKeyPress()
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    task.wait(1)
+    task.wait(1.75)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
@@ -261,7 +413,7 @@ AutoBeatNPCToggle:OnChanged(function()
                     simulateKeyPress()
                 end
                 
-                task.wait(1)
+                task.wait(1.75)
             end
         end)
         
@@ -280,12 +432,12 @@ AutoBeatNPCToggle:OnChanged(function()
                             local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                             if humanoid then
                                 humanoid.CFrame = npc.Table.PlayerRoot.CFrame
-                                wait(4)
+                                wait(4.5)
                             end
                         end
                     end
                 end
-                wait(0.1)
+                wait(1)
             end
         end)
     end
