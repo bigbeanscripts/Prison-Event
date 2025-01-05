@@ -380,7 +380,7 @@ end
 
 local function simulateKeyPress()
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    task.wait(1.75)
+    task.wait(1.25)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
@@ -413,7 +413,7 @@ AutoBeatNPCToggle:OnChanged(function()
                     simulateKeyPress()
                 end
                 
-                task.wait(1.75)
+                task.wait(1.2)
             end
         end)
         
@@ -432,7 +432,7 @@ AutoBeatNPCToggle:OnChanged(function()
                             local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                             if humanoid then
                                 humanoid.CFrame = npc.Table.PlayerRoot.CFrame
-                                wait(4.5)
+                                wait(4)
                             end
                         end
                     end
