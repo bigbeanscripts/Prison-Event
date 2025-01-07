@@ -435,7 +435,7 @@ end
 
 local AutoBeatNPCToggle = Tabs.Main:AddToggle("AutoBeatNPC", {
     Title = "Auto Beat NPC",
-    Description = "Auto Fight Underground NPCs. This will stop for a few seconds before a snowstorm event ends/starts, to prevent it from breaking.)",
+    Description = "Auto Fight Underground NPCs. This will stop for a few seconds before a snowstorm event ends/starts, to prevent it from breaking. If you experience the issue where the npc can't be beat, after 20 seconds this script will teleport to the rift world, and fix this issue.)",
     Default = false
 })
 
