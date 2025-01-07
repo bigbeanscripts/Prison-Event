@@ -1,4 +1,4 @@
--- Prison
+-- WORKING Prison
 -- Create a ScreenGui for our minimize button
 local MinimizeGui = Instance.new("ScreenGui")
 MinimizeGui.Name = "MinimizeGui"
@@ -404,7 +404,7 @@ end
 
 local function simulateKeyPress()
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    task.wait(0.5)
+    task.wait(1)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
@@ -443,7 +443,7 @@ AutoBeatNPCToggle:OnChanged(function()
                     end
                 end
                 
-                task.wait(0.5)
+                task.wait(1.2)
             end
         end)
         
@@ -466,7 +466,7 @@ AutoBeatNPCToggle:OnChanged(function()
                                 local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
                                 if humanoid then
                                     humanoid.CFrame = npc.Table.PlayerRoot.CFrame
-                                    wait(2)
+                                    wait(3.6)
                                 end
                             end
                         end
@@ -682,5 +682,4 @@ AutoContrabandToggle:OnChanged(function()
         end)
     end
 end)
-
 
