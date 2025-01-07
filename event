@@ -360,6 +360,30 @@ AutoClickToggle:OnChanged(function()
     end
 end)
 
+-- Add timer variables at top
+local timerText = workspace.Zones.ChristmasEvent.Interactables.SnowstormTimer.Timer.Timer.UpdateTimer
+
+local function getTimerSeconds()
+    local text = timerText.Text
+    local minutes, seconds = text:match("(%d+)M (%d+)S")
+    if minutes and seconds then
+        return tonumber(minutes) * 60 + tonumber(seconds)
+    end
+    return 0
+end
+
+-- Add after timer variables
+spawn(function()
+    while wait(10) do
+        local timeLeft = getTimerSeconds()
+        local minutes = math.floor(timeLeft / 60)
+        local seconds = timeLeft % 60
+        print(string.format("Snowstorm Timer: %02d:%02d", minutes, seconds))
+    end
+end)
+
+-- ...rest of existing code...
+
 local NPCSection = Tabs.Main:AddSection("Auto NPC Farm")
 
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -386,7 +410,7 @@ end
 
 local AutoBeatNPCToggle = Tabs.Main:AddToggle("AutoBeatNPC", {
     Title = "Auto Beat NPC",
-    Description = "Auto Fight Underground NPCs",
+    Description = "Auto Fight Underground NPCs. This will stop for a few seconds before a snowstorm event ends/starts, to prevent it from breaking.)",
     Default = false
 })
 
@@ -398,7 +422,10 @@ AutoBeatNPCToggle:OnChanged(function()
         spawn(function()
             while true do
                 if not AutoBeatNPCToggle.Value then break end
-                updateProximityPrompts(snowstormPath)
+                local timeLeft = getTimerSeconds()
+                if timeLeft > 7 then
+                    updateProximityPrompts(snowstormPath)
+                end
                 wait(1)
             end
         end)
@@ -407,10 +434,13 @@ AutoBeatNPCToggle:OnChanged(function()
         spawn(function()
             while true do
                 if not AutoBeatNPCToggle.Value then break end
+                local timeLeft = getTimerSeconds()
                 
-                local npcs = snowstormPath:GetChildren()
-                if #npcs > 0 then
-                    simulateKeyPress()
+                if timeLeft > 7 then
+                    local npcs = snowstormPath:GetChildren()
+                    if #npcs > 0 then
+                        simulateKeyPress()
+                    end
                 end
                 
                 task.wait(1.2)
@@ -421,27 +451,36 @@ AutoBeatNPCToggle:OnChanged(function()
         spawn(function()
             while true do
                 if not AutoBeatNPCToggle.Value then break end
+                local timeLeft = getTimerSeconds()
                 
-                local npcs = snowstormPath:GetChildren()
-                if #npcs > 0 then
-                    for _, npc in ipairs(npcs) do
-                        if not AutoBeatNPCToggle.Value then break end
-                        
-                        if npc:IsA("Model") and npc:FindFirstChild("Table") and 
-                           npc.Table:FindFirstChild("PlayerRoot") then
-                            local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                            if humanoid then
-                                humanoid.CFrame = npc.Table.PlayerRoot.CFrame
-                                wait(3.6)
+                if timeLeft > 7 then
+                    local npcs = snowstormPath:GetChildren()
+                    if #npcs > 0 then
+                        for _, npc in ipairs(npcs) do
+                            if not AutoBeatNPCToggle.Value then break end
+                            -- Recheck timer during loop
+                            if getTimerSeconds() <= 7 then break end
+                            
+                            if npc:IsA("Model") and npc:FindFirstChild("Table") and 
+                               npc.Table:FindFirstChild("PlayerRoot") then
+                                local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
+                                if humanoid then
+                                    humanoid.CFrame = npc.Table.PlayerRoot.CFrame
+                                    wait(3.6)
+                                end
                             end
                         end
                     end
+                else
+                    print("Timer too low:", timeLeft, "- Paused")
+                    wait(1)
                 end
-                wait(1)
             end
         end)
     end
 end)
+
+
 
 -- Eggs Section
 local EggSection = Tabs.Main:AddSection("Eggs")
@@ -643,3 +682,5 @@ AutoContrabandToggle:OnChanged(function()
         end)
     end
 end)
+
+
