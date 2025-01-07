@@ -360,9 +360,20 @@ AutoClickToggle:OnChanged(function()
     end
 end)
 
--- Add timer variables at top
+local NPCSection = Tabs.Main:AddSection("Auto NPC Farm")
+
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local npcFolderPath = workspace.GameObjects.ArmWrestling.PrisonEvent.NPC
+local snowstormPath = workspace.GameObjects.RngNPCs["PrisonEvent-Underground"].Npc
+local isAutoFarming = false
+local isBossFighting = false
+local lastTeleportTime = tick()
+local lastRemoteInvokeTime = tick()
+
+-- Timer setup
 local timerText = workspace.Zones.ChristmasEvent.Interactables.SnowstormTimer.Timer.Timer.UpdateTimer
 
+-- Function to parse timer text and convert to seconds
 local function getTimerSeconds()
     local text = timerText.Text
     local minutes, seconds = text:match("(%d+)M (%d+)S")
@@ -372,25 +383,39 @@ local function getTimerSeconds()
     return 0
 end
 
--- Add after timer variables
+-- Debug timer function
 spawn(function()
-    while wait(10) do
-        local timeLeft = getTimerSeconds()
-        local minutes = math.floor(timeLeft / 60)
-        local seconds = timeLeft % 60
-        print(string.format("Snowstorm Timer: %02d:%02d", minutes, seconds))
+    while wait(1) do
+        print("Timer Text:", timerText.Text, "Seconds:", getTimerSeconds())
     end
 end)
 
--- ...rest of existing code...
+-- Function to handle teleport
+local function handleTeleport()
+    local args = {
+        [1] = workspace.Zones:FindFirstChild("16").Interactables.Teleports.Locations.Spawn
+    }
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+    lastTeleportTime = tick()
+    print("Manual teleport triggered")
+end
 
-local NPCSection = Tabs.Main:AddSection("Auto NPC Farm")
+-- Hook ShowTeleport RemoteFunction
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Knit = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit")
+local TeleportService = Knit:WaitForChild("Services"):WaitForChild("TeleportService")
+local RF = TeleportService:WaitForChild("RF")
+local ShowTeleport = RF:WaitForChild("ShowTeleport")
 
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local npcFolderPath = workspace.GameObjects.ArmWrestling.PrisonEvent.NPC
-local snowstormPath = workspace.GameObjects.RngNPCs["PrisonEvent-Underground"].Npc
-local isAutoFarming = false
-local isBossFighting = false
+local oldNamecall
+oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
+    local method = getnamecallmethod()
+    if not checkcaller() and self == ShowTeleport and method == "InvokeServer" then
+        print("ShowTeleport RemoteFunction was invoked!")
+        lastRemoteInvokeTime = tick()
+    end
+    return oldNamecall(self, ...)
+end)
 
 local function updateProximityPrompts(folder)
     for _, descendant in ipairs(folder:GetDescendants()) do
@@ -404,7 +429,7 @@ end
 
 local function simulateKeyPress()
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    task.wait(1)
+    task.wait(0.5)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
@@ -418,6 +443,22 @@ AutoBeatNPCToggle:OnChanged(function()
     isAutoFarming = AutoBeatNPCToggle.Value
     
     if isAutoFarming then
+        -- Start teleport check
+        spawn(function()
+            while true do
+                if not AutoBeatNPCToggle.Value then break end
+                local currentTime = tick()
+                local timeSinceLastRemote = currentTime - lastRemoteInvokeTime
+                
+                -- Only teleport if remote hasn't been invoked in 20 seconds
+                if timeSinceLastRemote >= 20 then
+                    print("No remote invoke detected for 20 seconds, triggering teleport")
+                    handleTeleport()
+                end
+                wait(15)
+            end
+        end)
+        
         -- Start proximity prompt updates
         spawn(function()
             while true do
@@ -479,6 +520,7 @@ AutoBeatNPCToggle:OnChanged(function()
         end)
     end
 end)
+
 
 
 
@@ -682,4 +724,3 @@ AutoContrabandToggle:OnChanged(function()
         end)
     end
 end)
-
