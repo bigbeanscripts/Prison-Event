@@ -373,22 +373,30 @@ local lastRemoteInvokeTime = tick()
 -- Timer setup
 local timerText = workspace.Zones.ChristmasEvent.Interactables.SnowstormTimer.Timer.Timer.UpdateTimer
 
--- Function to parse timer text and convert to seconds
 local function getTimerSeconds()
     local text = timerText.Text
-    local minutes, seconds = text:match("(%d+)M (%d+)S")
+    
+    -- Try "MMM SSS" format (e.g. "1M 20S")
+    local minutes, seconds = text:match("(%d+)M%s*(%d+)S")
     if minutes and seconds then
         return tonumber(minutes) * 60 + tonumber(seconds)
     end
+    
+    -- Try just seconds format (e.g. "12S")
+    local justSeconds = text:match("(%d+)S")
+    if justSeconds then
+        return tonumber(justSeconds)
+    end
+    
+    -- Try just minutes format (e.g. "1M")
+    local justMinutes = text:match("(%d+)M")
+    if justMinutes then
+        return tonumber(justMinutes) * 60
+    end
+    
     return 0
 end
 
--- Debug timer function
-spawn(function()
-    while wait(1) do
-        print("Timer Text:", timerText.Text, "Seconds:", getTimerSeconds())
-    end
-end)
 
 -- Function to handle teleport
 local function handleTeleport()
@@ -411,7 +419,6 @@ local oldNamecall
 oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
     local method = getnamecallmethod()
     if not checkcaller() and self == ShowTeleport and method == "InvokeServer" then
-        print("ShowTeleport RemoteFunction was invoked!")
         lastRemoteInvokeTime = tick()
     end
     return oldNamecall(self, ...)
@@ -514,7 +521,7 @@ AutoBeatNPCToggle:OnChanged(function()
                     end
                 else
                     print("Timer too low:", timeLeft, "- Paused")
-                    wait(1)
+                    wait(2.5)
                 end
             end
         end)
