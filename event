@@ -1,4 +1,4 @@
--- WORKING Prison
+-- Prison
 -- Create a ScreenGui for our minimize button
 local MinimizeGui = Instance.new("ScreenGui")
 MinimizeGui.Name = "MinimizeGui"
@@ -166,18 +166,16 @@ CloseButton.MouseButton1Click:Connect(function()
     MinimizeGui:Destroy()
     Window:Destroy()
 end)
-
 -- Add before sections
 local function GetBestPrisonBag()
     local player = game.Players.LocalPlayer
     local prisonKnuckle = player:GetAttribute("TotalPrisonKnuckle") or 0
     local punchBagData = require(game:GetService("ReplicatedStorage").Data.PunchBags)
     
-    -- Check VIP first
-    if player:GetAttribute("VIP") then
-        print("Using VIP bag")
-        return "VIP"
-    end
+-- Check VIP first
+if player:GetAttribute("VIP") == true then
+    return "VIP"
+end
     
     -- Find best qualifying tier
     local bestTier = "Tier1"
@@ -261,7 +259,8 @@ AutoTrainToggle:OnChanged(function()
                         -- Send stats
                         local args = {
                             [1] = "PrisonEvent",
-                            [2] = tier
+                            [2] = tier,
+                            [3] = game.Players.LocalPlayer:GetAttribute("VIP") == true
                         }
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
                     end
@@ -279,11 +278,12 @@ AutoTrainToggle:OnChanged(function()
                     local tier = GetBestPrisonBag()
                     local args = {
                         [1] = "PrisonEvent",
-                        [2] = tier
+                        [2] = tier,
+                        [3] = game.Players.LocalPlayer:GetAttribute("VIP") == true
                     }
                     game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
                 end
-                wait(0.5)
+                wait(0.25)
             end
         end)
     end
@@ -360,6 +360,30 @@ AutoClickToggle:OnChanged(function()
     end
 end)
 
+-- Add timer variables at top
+local timerText = workspace.Zones.ChristmasEvent.Interactables.SnowstormTimer.Timer.Timer.UpdateTimer
+
+local function getTimerSeconds()
+    local text = timerText.Text
+    local minutes, seconds = text:match("(%d+)M (%d+)S")
+    if minutes and seconds then
+        return tonumber(minutes) * 60 + tonumber(seconds)
+    end
+    return 0
+end
+
+-- Add after timer variables
+spawn(function()
+    while wait(10) do
+        local timeLeft = getTimerSeconds()
+        local minutes = math.floor(timeLeft / 60)
+        local seconds = timeLeft % 60
+        print(string.format("Snowstorm Timer: %02d:%02d", minutes, seconds))
+    end
+end)
+
+-- ...rest of existing code...
+
 local NPCSection = Tabs.Main:AddSection("Auto NPC Farm")
 
 local VirtualInputManager = game:GetService("VirtualInputManager")
@@ -367,62 +391,6 @@ local npcFolderPath = workspace.GameObjects.ArmWrestling.PrisonEvent.NPC
 local snowstormPath = workspace.GameObjects.RngNPCs["PrisonEvent-Underground"].Npc
 local isAutoFarming = false
 local isBossFighting = false
-local lastTeleportTime = tick()
-local lastRemoteInvokeTime = tick()
-
--- Timer setup
-local timerText = workspace.Zones.ChristmasEvent.Interactables.SnowstormTimer.Timer.Timer.UpdateTimer
-
-local function getTimerSeconds()
-    local text = timerText.Text
-    
-    -- Try "MMM SSS" format (e.g. "1M 20S")
-    local minutes, seconds = text:match("(%d+)M%s*(%d+)S")
-    if minutes and seconds then
-        return tonumber(minutes) * 60 + tonumber(seconds)
-    end
-    
-    -- Try just seconds format (e.g. "12S")
-    local justSeconds = text:match("(%d+)S")
-    if justSeconds then
-        return tonumber(justSeconds)
-    end
-    
-    -- Try just minutes format (e.g. "1M")
-    local justMinutes = text:match("(%d+)M")
-    if justMinutes then
-        return tonumber(justMinutes) * 60
-    end
-    
-    return 0
-end
-
-
--- Function to handle teleport
-local function handleTeleport()
-    local args = {
-        [1] = workspace.Zones:FindFirstChild("16").Interactables.Teleports.Locations.Spawn
-    }
-    game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
-    lastTeleportTime = tick()
-    print("Manual teleport triggered")
-end
-
--- Hook ShowTeleport RemoteFunction
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Knit = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit")
-local TeleportService = Knit:WaitForChild("Services"):WaitForChild("TeleportService")
-local RF = TeleportService:WaitForChild("RF")
-local ShowTeleport = RF:WaitForChild("ShowTeleport")
-
-local oldNamecall
-oldNamecall = hookmetamethod(game, "__namecall", function(self, ...)
-    local method = getnamecallmethod()
-    if not checkcaller() and self == ShowTeleport and method == "InvokeServer" then
-        lastRemoteInvokeTime = tick()
-    end
-    return oldNamecall(self, ...)
-end)
 
 local function updateProximityPrompts(folder)
     for _, descendant in ipairs(folder:GetDescendants()) do
@@ -436,13 +404,13 @@ end
 
 local function simulateKeyPress()
     VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    task.wait(0.5)
+    task.wait(1)
     VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
 end
 
 local AutoBeatNPCToggle = Tabs.Main:AddToggle("AutoBeatNPC", {
     Title = "Auto Beat NPC",
-    Description = "Auto Fight Underground NPCs. This will stop for a few seconds before a snowstorm event ends/starts, to prevent it from breaking. If you experience the issue where the npc can't be beat, after 20 seconds this script will teleport to the rift world, and fix this issue.)",
+    Description = "Auto Fight Underground NPCs. This will stop for a few seconds before a snowstorm event ends/starts, to prevent it from breaking.)",
     Default = false
 })
 
@@ -450,22 +418,6 @@ AutoBeatNPCToggle:OnChanged(function()
     isAutoFarming = AutoBeatNPCToggle.Value
     
     if isAutoFarming then
-        -- Start teleport check
-        spawn(function()
-            while true do
-                if not AutoBeatNPCToggle.Value then break end
-                local currentTime = tick()
-                local timeSinceLastRemote = currentTime - lastRemoteInvokeTime
-                
-                -- Only teleport if remote hasn't been invoked in 20 seconds
-                if timeSinceLastRemote >= 20 then
-                    print("No remote invoke detected for 20 seconds, triggering teleport")
-                    handleTeleport()
-                end
-                wait(15)
-            end
-        end)
-        
         -- Start proximity prompt updates
         spawn(function()
             while true do
@@ -521,13 +473,12 @@ AutoBeatNPCToggle:OnChanged(function()
                     end
                 else
                     print("Timer too low:", timeLeft, "- Paused")
-                    wait(2.5)
+                    wait(1)
                 end
             end
         end)
     end
 end)
-
 
 
 
@@ -731,3 +682,4 @@ AutoContrabandToggle:OnChanged(function()
         end)
     end
 end)
+
