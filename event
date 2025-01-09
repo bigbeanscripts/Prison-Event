@@ -1,4 +1,4 @@
--- Prison
+-- Prison WORKING
 -- Create a ScreenGui for our minimize button
 local MinimizeGui = Instance.new("ScreenGui")
 MinimizeGui.Name = "MinimizeGui"
@@ -166,6 +166,48 @@ CloseButton.MouseButton1Click:Connect(function()
     MinimizeGui:Destroy()
     Window:Destroy()
 end)
+
+
+local PlaytimeSection = Tabs.Main:AddSection("Playtime Pass")
+
+local AutoPlaytimeToggle = PlaytimeSection:AddToggle("AutoPlaytime", {
+    Title = "Auto Claim Playtime Pass",
+    Default = false
+})
+
+AutoPlaytimeToggle:OnChanged(function()
+    if AutoPlaytimeToggle.Value then
+        -- Claim rewards immediately when enabled
+        for i = 1, 12 do
+            local args = {
+                [1] = "Free",
+                [2] = i
+            }
+            game:GetService("ReplicatedStorage").Packages.Knit.Services.EventPassService.RF.ClaimReward:InvokeServer(unpack(args))
+        end
+        
+        -- Start reset/claim loop
+        spawn(function()
+            while AutoPlaytimeToggle.Value do
+                wait(60) -- Wait before reset
+                
+                -- Reset pass
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.EventPassService.RF.Reset:InvokeServer()
+                
+                -- Claim all rewards after reset
+                for i = 1, 12 do
+                    local args = {
+                        [1] = "Free",
+                        [2] = i
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.EventPassService.RF.ClaimReward:InvokeServer(unpack(args))
+                end
+            end
+        end)
+    end
+end)
+
+
 -- Add before sections
 local function GetBestPrisonBag()
     local player = game.Players.LocalPlayer
@@ -682,4 +724,3 @@ AutoContrabandToggle:OnChanged(function()
         end)
     end
 end)
-
