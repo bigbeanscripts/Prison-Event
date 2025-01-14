@@ -420,7 +420,6 @@ spawn(function()
         local timeLeft = getTimerSeconds()
         local minutes = math.floor(timeLeft / 60)
         local seconds = timeLeft % 60
-        print(string.format("Snowstorm Timer: %02d:%02d", minutes, seconds))
     end
 end)
 
