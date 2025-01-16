@@ -1,4 +1,8 @@
 -- Prison WORKING
+
+
+game:GetService("ReplicatedStorage").Packages.Knit.Services.WrestleService.RF.OnAutoFight:InvokeServer()
+
 -- Create a ScreenGui for our minimize button
 local MinimizeGui = Instance.new("ScreenGui")
 MinimizeGui.Name = "MinimizeGui"
