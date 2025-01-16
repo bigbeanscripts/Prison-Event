@@ -402,6 +402,9 @@ AutoClickToggle:OnChanged(function()
     end
 end)
 
+
+
+
 -- Add timer variables at top
 local timerText = workspace.Zones.ChristmasEvent.Interactables.SnowstormTimer.Timer.Timer.UpdateTimer
 
@@ -414,43 +417,25 @@ local function getTimerSeconds()
     return 0
 end
 
--- Add after timer variables
-spawn(function()
-    while wait(10) do
-        local timeLeft = getTimerSeconds()
-        local minutes = math.floor(timeLeft / 60)
-        local seconds = timeLeft % 60
-    end
-end)
-
--- ...rest of existing code...
 local NPCSection = Tabs.Main:AddSection("Auto NPC Farm")
-local VirtualInputManager = game:GetService("VirtualInputManager")
-local npcFolderPath = workspace.GameObjects.ArmWrestling.PrisonEvent.NPC
 local snowstormPath = workspace.GameObjects.RngNPCs["PrisonEvent-Underground"].Npc
 local isAutoFarming = false
-local isBossFighting = false
+
 local function updateProximityPrompts(folder)
     for _, descendant in ipairs(folder:GetDescendants()) do
         if descendant:IsA("ProximityPrompt") then
             descendant.HoldDuration = 0
             descendant.Style = Enum.ProximityPromptStyle.Default
-            descendant.MaxActivationDistance = 6
+            descendant.MaxActivationDistance = 1000000000000
+            -- Directly trigger the proximity prompt
+            fireproximityprompt(descendant)
         end
     end
 end
 
-local function simulateKeyPress()
-    VirtualInputManager:SendKeyEvent(true, Enum.KeyCode.E, false, game)
-    task.wait(0.5)
-    task.wait(1)
-    VirtualInputManager:SendKeyEvent(false, Enum.KeyCode.E, false, game)
-end
-
 local AutoBeatNPCToggle = Tabs.Main:AddToggle("AutoBeatNPC", {
     Title = "Auto Beat NPC",
-    Description = "Auto Fight Underground NPCs. This will stop for a few seconds before a snowstorm event ends/starts, to prevent it from breaking. If you experience the issue where the npc can't be beat, after 20 seconds this script will teleport to the rift world, and fix this issue.)",
-    Description = "Auto Fight Underground NPCs. This will stop for a few seconds before a snowstorm event ends/starts, to prevent it from breaking.)",
+    Description = "Auto Fight Underground NPCs. This will stop for a few seconds before a snowstorm event ends/starts.",
     Default = false
 })
 
@@ -458,85 +443,26 @@ AutoBeatNPCToggle:OnChanged(function()
     isAutoFarming = AutoBeatNPCToggle.Value
 
     if isAutoFarming then
-        -- Start teleport check
-        spawn(function()
-            while true do
-                if not AutoBeatNPCToggle.Value then break end
-                local currentTime = tick()
-                local timeSinceLastRemote = currentTime - lastRemoteInvokeTime
-                
-                -- Only teleport if remote hasn't been invoked in 20 seconds
-                if timeSinceLastRemote >= 20 then
-                    print("No remote invoke detected for 20 seconds, triggering teleport")
-                    handleTeleport()
-                end
-                wait(15)
-            end
-        end)
-        
         -- Start proximity prompt updates
         spawn(function()
             while true do
                 if not AutoBeatNPCToggle.Value then break end
                 local timeLeft = getTimerSeconds()
-                if timeLeft > 7 then
+                if timeLeft > 4 then
                     updateProximityPrompts(snowstormPath)
                 end
                 wait(1)
             end
         end)
-        
-        -- Start key simulation
-        spawn(function()
-            while true do
-                if not AutoBeatNPCToggle.Value then break end
-                local timeLeft = getTimerSeconds()
-                
-                if timeLeft > 7 then
-                    local npcs = snowstormPath:GetChildren()
-                    if #npcs > 0 then
-                        simulateKeyPress()
-                    end
-                end
-                
-                task.wait(1.2)
+    else
+        -- Reset proximity prompt distance when toggle is turned off
+        for _, descendant in ipairs(snowstormPath:GetDescendants()) do
+            if descendant:IsA("ProximityPrompt") then
+                descendant.MaxActivationDistance = 6
             end
-        end)
-        
-        -- Main NPC farming loop
-        spawn(function()
-            while true do
-                if not AutoBeatNPCToggle.Value then break end
-                local timeLeft = getTimerSeconds()
-                
-                if timeLeft > 7 then
-                    local npcs = snowstormPath:GetChildren()
-                    if #npcs > 0 then
-                        for _, npc in ipairs(npcs) do
-                            if not AutoBeatNPCToggle.Value then break end
-                            -- Recheck timer during loop
-                            if getTimerSeconds() <= 7 then break end
-                            
-                            if npc:IsA("Model") and npc:FindFirstChild("Table") and 
-                               npc.Table:FindFirstChild("PlayerRoot") then
-                                local humanoid = game.Players.LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                                if humanoid then
-                                    humanoid.CFrame = npc.Table.PlayerRoot.CFrame
-                                    wait(3.6)
-                                end
-                            end
-                        end
-                    end
-                else
-                    print("Timer too low:", timeLeft, "- Paused")
-                    wait(2.5)
-                    wait(1)
-                end
-            end
-        end)
+        end
     end
 end)
-
 
 -- Eggs Section
 local EggSection = Tabs.Main:AddSection("Eggs")
@@ -552,7 +478,7 @@ local HatchAmountDropdown = Tabs.Main:AddDropdown("HatchAmount", {
 -- Egg Selection Dropdown
 local EggDropdown = Tabs.Main:AddDropdown("EggSelect", {
     Title = "Select Egg",
-    Values = {"Prison", "Police"},
+    Values = {"Prison", "Police", "SubZero"},
     Multi = false,
     Default = "Prison"
 })
@@ -681,41 +607,75 @@ AutoBuyToggle:OnChanged(function()
     end
 end)
 
-local WheelSection = Tabs.Main:AddSection("Wheel")
+-- Hidden Roulette Section
+local HiddenSection = Tabs.Main:AddSection("Hidden Roulette Wheel")
 
--- Spin Amount Dropdown
-local SpinDropdown = Tabs.Main:AddDropdown("SpinAmount", {
-    Title = "Spin Amount",
+local HiddenSpinDropdown = Tabs.Main:AddDropdown("HiddenSpinAmount", {
+    Title = "Hidden Roulette",
+    Description = "Select Wheel Spin Amount",
     Values = {"1x", "3x", "10x"},
     Multi = false,
     Default = "1x"
 })
 
--- Auto Spin Toggle
-local AutoSpinToggle = Tabs.Main:AddToggle("AutoSpin", {
-    Title = "Auto Spin",
+local AutoHiddenToggle = Tabs.Main:AddToggle("AutoHiddenSpin", {
+    Title = "Auto Hidden Roulette",
     Default = false
 })
 
-AutoSpinToggle:OnChanged(function()
-    if AutoSpinToggle.Value then
+AutoHiddenToggle:OnChanged(function()
+    if AutoHiddenToggle.Value then
         spawn(function()
             while true do
-                if not AutoSpinToggle.Value then break end
+                if not AutoHiddenToggle.Value then break end
                 
                 local args = {
                     [1] = "Hidden Roulette",
-                    [2] = SpinDropdown.Value == "3x" and "x10" or SpinDropdown.Value == "10x" and "x25" or nil
+                    [2] = HiddenSpinDropdown.Value == "3x" and "x10" or HiddenSpinDropdown.Value == "10x" and "x25" or nil
                 }
                 game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
                 
-                -- Dynamic wait times based on spin amount
-                local waitTime = SpinDropdown.Value == "1x" and 2 or SpinDropdown.Value == "3x" and 0.5 or 0.3
-                wait(waitTime)
+                wait(1)
             end
         end)
     end
 end)
+
+-- Snow-Ops Roulette Section
+local SnowOpsSection = Tabs.Main:AddSection("Snow-Ops Wheel")
+
+local SnowOpsSpinDropdown = Tabs.Main:AddDropdown("SnowOpsSpinAmount", {
+    Title = "Snow-Ops Roulette",
+    Description = "Select Wheel Spin Amount",
+    Values = {"1x", "3x", "10x"},
+    Multi = false,
+    Default = "1x"
+})
+
+local AutoSnowOpsToggle = Tabs.Main:AddToggle("AutoSnowOpsSpin", {
+    Title = "Auto Snow-Ops Roulette",
+    Default = false
+})
+
+AutoSnowOpsToggle:OnChanged(function()
+    if AutoSnowOpsToggle.Value then
+        spawn(function()
+            while true do
+                if not AutoSnowOpsToggle.Value then break end
+                
+                local args = {
+                    [1] = "Snow-Ops Roulette",
+                    [2] = SnowOpsSpinDropdown.Value == "3x" and "x10" or SnowOpsSpinDropdown.Value == "10x" and "x25" or nil
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
+                
+                wait(1)
+            end
+        end)
+    end
+end)
+
+local ContrabandSection = Tabs.Main:AddSection("Contraband Crate")
 
 -- Auto Contraband Toggle
 local AutoContrabandToggle = Tabs.Main:AddToggle("AutoContraband", {
