@@ -1,4 +1,4 @@
--- Prison WORKING
+-- Ninja Event
 
 
 game:GetService("ReplicatedStorage").Packages.Knit.Services.WrestleService.RF.OnAutoFight:InvokeServer()
@@ -139,7 +139,7 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Main = Window:AddTab({ Title = "Prison Event", Icon = "siren" })
+    Main = Window:AddTab({ Title = "Ninja Event", Icon = "katana" })
 
 }
 
@@ -212,23 +212,28 @@ AutoPlaytimeToggle:OnChanged(function()
 end)
 
 
--- Add before sections
+local function GetCurrentZone()
+    local player = game.Players.LocalPlayer
+    return player:GetAttribute("ZoneBlossomVillage") == true and "BlossomVillage" or "NinjaSchool"
+end
+
+
+
 local function GetBestPrisonBag()
     local player = game.Players.LocalPlayer
-    local prisonKnuckle = player:GetAttribute("TotalPrisonKnuckle") or 0
+    local currentZone = GetCurrentZone()
+    local prisonKnuckle = player:GetAttribute(currentZone == "BlossomVillage" and "TotalBlossomKnuckles" or "TotalNinjaKnuckles") or 0
     local punchBagData = require(game:GetService("ReplicatedStorage").Data.PunchBags)
     
--- Check VIP first
-if player:GetAttribute("VIP") == true then
-    return "VIP"
-end
+    if player:GetAttribute("VIP") == true then
+        return "VIP"
+    end
     
-    -- Find best qualifying tier
     local bestTier = "Tier1"
     local highestRequired = 0
     
-    if punchBagData and punchBagData.PrisonEvent then
-        for tier, data in pairs(punchBagData.PrisonEvent) do
+    if punchBagData and punchBagData[currentZone] then
+        for tier, data in pairs(punchBagData[currentZone]) do
             if data.StrengthRequired and 
                prisonKnuckle >= data.StrengthRequired and 
                data.StrengthRequired > highestRequired then
@@ -238,20 +243,19 @@ end
         end
     end
     
-    print(string.format("Selected PunchBag: %s (Required: %d, Current: %d)", 
-        bestTier, highestRequired, prisonKnuckle))
     return bestTier
 end
 
 local function GetBestPrisonEquipment()
     local player = game.Players.LocalPlayer
-    local prisonBicep = player:GetAttribute("TotalPrisonBicep") or 0
+    local currentZone = GetCurrentZone()
+    local prisonBicep = player:GetAttribute(currentZone == "BlossomVillage" and "TotalBlossomBicep" or "TotalNinjaBicep") or 0
     local dumbbellData = require(game:GetService("ReplicatedStorage").Data.Dumbells)
-    local bestDumbell = "Prison1"
+    local bestDumbell = currentZone == "NinjaSchool" and "Ninja1" or "Blossom1"
     local highestRequired = 0
     
-    if dumbbellData and dumbbellData.PrisonEvent then
-        for name, data in pairs(dumbbellData.PrisonEvent) do
+    if dumbbellData and dumbbellData[currentZone] then
+        for name, data in pairs(dumbbellData[currentZone]) do
             if data.StrengthRequired and 
                prisonBicep >= data.StrengthRequired and 
                data.StrengthRequired > highestRequired then
@@ -260,18 +264,21 @@ local function GetBestPrisonEquipment()
             end
         end
     end
-    
-    print(string.format("Selected Dumbell: %s (Required: %d, Current: %d)",
-        bestDumbell, highestRequired, prisonBicep))
+
     return bestDumbell
 end
+
+local function trainChi()
+    game:GetService("ReplicatedStorage").Packages.Knit.Services.ChiService.RF.SetChi:InvokeServer()
+end
+
 
 -- Add Training Section
 local TrainSection = Tabs.Main:AddSection("Auto Train")
 
 local TrainingDropdown = Tabs.Main:AddDropdown("TrainingSelect", {
     Title = "Select Training Type",
-    Values = {"Dumbells", "PunchBags"},
+    Values = {"Dumbells", "PunchBags", "Chi Zones"},
     Multi = false,
     Default = "Dumbells"
 })
@@ -281,74 +288,169 @@ local AutoTrainToggle = Tabs.Main:AddToggle("AutoTrain", {
     Default = false
 })
 
+-- Create button after function exists
+local TrainChiButton = Tabs.Main:AddButton({
+    Title = "Train Chi",
+    Description = "Trains Chi (Outside of Zones)",
+    Callback = function()
+        trainChi()
+    end
+})
+
+
+
+local function getBestChiZone()
+    local player = game.Players.LocalPlayer
+    local chiLevel = player:GetAttribute("TotalNinjaChi") or 0
+    
+    -- Chi zone requirements and direct CFrames
+    local chiZones = {
+        {req = 2000, cf = CFrame.new(-2262.39429, 62.2289581, 6049.82715)},
+        {req = 25000, cf = CFrame.new(-2140.29126, 62.2289581, 6114.97607)},
+        {req = 250000, cf = CFrame.new(-2133.35864, 31.6659641, 7659.94141)},
+        {req = 1000000, cf = CFrame.new(-2081.46436, 127.705963, 7722.24707)}             
+    }
+    
+    local bestZone = nil
+    for _, zone in ipairs(chiZones) do
+        if chiLevel >= zone.req then
+            bestZone = zone
+        else
+            break -- Stop checking once we find a zone that the player cannot access
+        end
+    end
+    
+    return bestZone
+end
+
+
+
+
+-- Update AutoTrainToggle handler
 AutoTrainToggle:OnChanged(function()
     if AutoTrainToggle.Value then
-        -- Equipment/Position check (10s)
+        -- Start appropriate training loop based on selected type
         spawn(function()
-            while AutoTrainToggle.Value do
-                if TrainingDropdown.Value == "Dumbells" then
-                    local equipment = GetBestPrisonEquipment()
-                    local args = {
-                        [1] = "PrisonEvent",
-                        [2] = "Dumbells",
-                        [3] = equipment
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
-                else
-                    local tier = GetBestPrisonBag()
-                    local bag = workspace.Zones.PrisonEvent.Interactables.Training.PunchBags[tier]
-                    if bag then
-                        local bagCFrame = bag:GetPivot()
-                        local teleportPos = bagCFrame * CFrame.new(0, 0, -3)
-                        game.Players.LocalPlayer.Character:PivotTo(teleportPos)
+            if TrainingDropdown.Value == "Dumbells" then
+                -- Initial equipment
+                local currentZone = GetCurrentZone()
+                local equipment = GetBestPrisonEquipment()
+                local args = {
+                    [1] = currentZone,
+                    [2] = "Dumbells", 
+                    [3] = equipment
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+                
+                -- Re-equip and click loop
+                spawn(function()
+                    while AutoTrainToggle.Value do
+                        -- Click
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
+                        wait(0.25)
                         
-                        -- Send stats
-                        local args = {
-                            [1] = "PrisonEvent",
-                            [2] = tier,
-                            [3] = game.Players.LocalPlayer:GetAttribute("VIP") == true
-                        }
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
+                        -- Re-equip every 6 seconds
+                        local timeElapsed = 0
+                        while timeElapsed < 6 and AutoTrainToggle.Value do
+                            wait(0.25)
+                            timeElapsed = timeElapsed + 0.25
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
+                        end
+                        
+                        if AutoTrainToggle.Value then
+                            local currentZone = GetCurrentZone()
+                            local equipment = GetBestPrisonEquipment()
+                            local args = {
+                                [1] = currentZone,
+                                [2] = "Dumbells",
+                                [3] = equipment
+                            }
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+                        end
                     end
-                end
-                wait(10)
-            end
-        end)
-        
-        -- Stats update (0.5s)
-        spawn(function()
-            while AutoTrainToggle.Value do
-                if TrainingDropdown.Value == "Dumbells" then
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                else
-                    local tier = GetBestPrisonBag()
-                    local args = {
-                        [1] = "PrisonEvent",
-                        [2] = tier,
-                        [3] = game.Players.LocalPlayer:GetAttribute("VIP") == true
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
-                end
-                wait(0.25)
+                end)
+                
+            elseif TrainingDropdown.Value == "Chi Zones" then
+                spawn(function()
+                    while AutoTrainToggle.Value and TrainingDropdown.Value == "Chi Zones" do
+                        -- Get best zone and teleport
+                        local bestZone = getBestChiZone()
+                        if bestZone then
+                            game.Players.LocalPlayer.Character:PivotTo(bestZone.cf)
+                        end
+                        
+                        -- Train chi
+                        trainChi()
+                        
+                        -- Wait 10 seconds between trains
+                        local timeElapsed = 0
+                        while timeElapsed < 3 and AutoTrainToggle.Value and TrainingDropdown.Value == "Chi Zones" do
+                            wait(1)
+                            timeElapsed = timeElapsed + 1
+                        end
+                        
+                        -- Break if toggle off or training changed
+                        if not AutoTrainToggle.Value or TrainingDropdown.Value ~= "Chi Zones" then break end
+                    end
+                end)
+                
+            else -- PunchBags
+                spawn(function() 
+                    while AutoTrainToggle.Value do
+                        local currentZone = GetCurrentZone()
+                        local tier = GetBestPrisonBag()
+                        local bag = workspace.Zones[currentZone].Interactables.Training.PunchBags[tier]
+                        
+                        if bag then
+                            local bagCFrame = bag:GetPivot()
+                            game.Players.LocalPlayer.Character:PivotTo(bagCFrame * CFrame.new(0, 0, -3))
+                            
+                            local args = {
+                                [1] = currentZone,
+                                [2] = tier,
+                                [3] = game.Players.LocalPlayer:GetAttribute("VIP") == true
+                            }
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
+                        end
+                        wait(0.25)
+                    end
+                end)
             end
         end)
     end
 end)
 
--- Rest of existing code remains the same...
+
+-- Connect attribute change listeners
+local player = game.Players.LocalPlayer
+player:GetAttributeChangedSignal("ZoneBlossomVillage"):Connect(onAttributeChanged)
+player:GetAttributeChangedSignal("TotalNinjaChi"):Connect(onAttributeChanged)
+player:GetAttributeChangedSignal("TotalNinjaBicep"):Connect(onAttributeChanged)
+player:GetAttributeChangedSignal("TotalNinjaKnuckles"):Connect(onAttributeChanged)
+player:GetAttributeChangedSignal("TotalBlossomBicep"):Connect(onAttributeChanged)
+player:GetAttributeChangedSignal("TotalBlossomKnuckles"):Connect(onAttributeChanged)
 
 
 -- Auto Fight Section
 local FightSection = Tabs.Main:AddSection("Auto Fight")
 
-local npcFolderPath = workspace.GameObjects.ArmWrestling.PrisonEvent.NPC
+local npcLocations = {
+    {path = workspace.GameObjects.ArmWrestling.NinjaSchool.NPC, zone = "NinjaSchool"},
+    {path = workspace.GameObjects.ArmWrestling.BlossomVillage.NPC, zone = "BlossomVillage"}
+}
+
 local modelNames = {}
 local models = {}
+local npcZones = {} -- Store which zone each NPC belongs to
 
-for _, npc in pairs(npcFolderPath:GetChildren()) do
-    if npc:IsA("Model") then
-        table.insert(models, npc)
-        table.insert(modelNames, npc.Name)
+-- Gather NPCs from all locations
+for _, location in pairs(npcLocations) do
+    for _, npc in pairs(location.path:GetChildren()) do
+        if npc:IsA("Model") then
+            table.insert(models, npc)
+            table.insert(modelNames, npc.Name)
+            npcZones[npc.Name] = location.zone
+        end
     end
 end
 
@@ -362,8 +464,8 @@ local modelDropdown = Tabs.Main:AddDropdown("ModelDropdown", {
 })
 
 local AutoFightToggle = Tabs.Main:AddToggle("AutoFight", {
-    Title = "Auto Fight", 
-    Default = false 
+    Title = "Auto Fight",
+    Default = false
 })
 
 AutoFightToggle:OnChanged(function()
@@ -373,12 +475,21 @@ AutoFightToggle:OnChanged(function()
                 if not AutoFightToggle.Value then break end
                 local selectedNPC = modelDropdown.Value
                 if selectedNPC then
-                    local npcModel = npcFolderPath:FindFirstChild(selectedNPC)
+                    -- Find the correct path based on the zone
+                    local zone = npcZones[selectedNPC]
+                    local npcPath
+                    if zone == "NinjaSchool" then
+                        npcPath = workspace.GameObjects.ArmWrestling.NinjaSchool.NPC
+                    else
+                        npcPath = workspace.GameObjects.ArmWrestling.BlossomVillage.NPC
+                    end
+                    
+                    local npcModel = npcPath:FindFirstChild(selectedNPC)
                     if npcModel and npcModel:FindFirstChild("Table") then
                         local args = {
                             [1] = selectedNPC,
                             [2] = npcModel.Table,
-                            [3] = "PrisonEvent"
+                            [3] = zone
                         }
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RE.onEnterNPCTable:FireServer(unpack(args))
                     end
@@ -407,22 +518,8 @@ AutoClickToggle:OnChanged(function()
 end)
 
 
-
-
--- Add timer variables at top
-local timerText = workspace.Zones.ChristmasEvent.Interactables.SnowstormTimer.Timer.Timer.UpdateTimer
-
-local function getTimerSeconds()
-    local text = timerText.Text
-    local minutes, seconds = text:match("(%d+)M (%d+)S")
-    if minutes and seconds then
-        return tonumber(minutes) * 60 + tonumber(seconds)
-    end
-    return 0
-end
-
 local NPCSection = Tabs.Main:AddSection("Auto NPC Farm")
-local snowstormPath = workspace.GameObjects.RngNPCs["PrisonEvent-Underground"].Npc
+local npcPath = workspace.GameObjects.RngNPCs.BlossomVillage.Npc
 local isAutoFarming = false
 
 local function updateProximityPrompts(folder)
@@ -439,28 +536,25 @@ end
 
 local AutoBeatNPCToggle = Tabs.Main:AddToggle("AutoBeatNPC", {
     Title = "Auto Beat NPC",
-    Description = "Auto Fight Underground NPCs. This will stop for a few seconds before a snowstorm event ends/starts.",
+    Description = "Auto Fight Blossom Village NPCs",
     Default = false
 })
 
 AutoBeatNPCToggle:OnChanged(function()
     isAutoFarming = AutoBeatNPCToggle.Value
-
+    
     if isAutoFarming then
         -- Start proximity prompt updates
         spawn(function()
             while true do
                 if not AutoBeatNPCToggle.Value then break end
-                local timeLeft = getTimerSeconds()
-                if timeLeft > 4 then
-                    updateProximityPrompts(snowstormPath)
-                end
+                updateProximityPrompts(npcPath)
                 wait(1)
             end
         end)
     else
         -- Reset proximity prompt distance when toggle is turned off
-        for _, descendant in ipairs(snowstormPath:GetDescendants()) do
+        for _, descendant in ipairs(npcPath:GetDescendants()) do
             if descendant:IsA("ProximityPrompt") then
                 descendant.MaxActivationDistance = 6
             end
@@ -482,9 +576,9 @@ local HatchAmountDropdown = Tabs.Main:AddDropdown("HatchAmount", {
 -- Egg Selection Dropdown
 local EggDropdown = Tabs.Main:AddDropdown("EggSelect", {
     Title = "Select Egg",
-    Values = {"Prison", "Police", "SubZero"},
+    Values = {"Ninja", "Sensei", "Blossom", "Samurai"},
     Multi = false,
-    Default = "Prison"
+    Default = "Ninja"
 })
 
 -- Auto Hatch Toggle
@@ -521,58 +615,6 @@ AutoHatchToggle:OnChanged(function()
 end)
 
 
-
-local TowerSection = Tabs.Main:AddSection("Towers")
-
--- Prison Cave Buttons
-TowerSection:AddButton({
-    Title = "Use Prison Cave Key (1x)",
-    Description = "Use the Prison Cave Key once.",
-    Callback = function()
-        local args = {
-            [1] = "PrisonCave",
-            [2] = false
-        }
-        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
-    end
-})
-
-TowerSection:AddButton({
-    Title = "Use All Prison Cave Keys (250x)",
-    Description = "Use All Prison Cave Keys (max 250 at a time).",
-    Callback = function()
-        local args = {
-            [1] = "PrisonCave",
-            [2] = true
-        }
-        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
-    end
-})
-
--- Police Shakedown Buttons
-TowerSection:AddButton({
-    Title = "Use Police Shakedown Key (1x)",
-    Description = "Use the Police Shakedown Key once.",
-    Callback = function()
-        local args = {
-            [1] = "PoliceShakedown",
-            [2] = false
-        }
-        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
-    end
-})
-
-TowerSection:AddButton({
-    Title = "Use All Police Shakedown Keys (250x)",
-    Description = "Use All Police Shakedown Keys (max 250 at a time).",
-    Callback = function()
-        local args = {
-            [1] = "PoliceShakedown",
-            [2] = true
-        }
-        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
-    end
-})
 local MerchantSection = Tabs.Main:AddSection("Merchant")
 
 local BlackMarketDropdown = Tabs.Main:AddDropdown("BlackMarketDropdown", {
@@ -597,7 +639,7 @@ AutoBuyToggle:OnChanged(function()
                     for number, isSelected in pairs(BlackMarketDropdown.Value) do
                         if isSelected then
                             local args = {
-                                [1] = "Black Market",
+                                [1] = "Blossom Merchant",
                                 [2] = number
                             }
                             game:GetService("ReplicatedStorage").Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(unpack(args))
@@ -611,11 +653,136 @@ AutoBuyToggle:OnChanged(function()
     end
 end)
 
+
+-- Belt Section
+local BeltSection = Tabs.Main:AddSection("Auto Buy Belts -- Not Finished")
+
+local function getBeltInfo()
+    local player = game.Players.LocalPlayer
+    local ninjaYen = player:GetAttribute("NinjaYen") or 0
+    local equippedBelt = player:GetAttribute("EquippedNinjaBelt")
+    local beltsData = require(game:GetService("ReplicatedStorage").Data.Ninja.Belts)
+    
+    local beltPrices = {}
+    -- Gather belt prices
+    for _, data in pairs(beltsData) do
+        if data.Name and data.Price then
+            beltPrices[data.Name] = data.Price
+        end
+    end
+    
+    -- Find next belt
+    local currentPrice = beltPrices[equippedBelt] or 0
+    local nextBelt, nextPrice
+    for belt, price in pairs(beltPrices) do
+        if price > currentPrice and (not nextPrice or price < nextPrice) then
+            nextBelt = belt
+            nextPrice = price
+        end
+    end
+    
+    return {
+        currentBelt = equippedBelt,
+        currentPrice = currentPrice,
+        nextBelt = nextBelt,
+        nextPrice = nextPrice,
+        yen = ninjaYen,
+        canAfford = nextPrice and ninjaYen >= nextPrice
+    }
+end
+
+local function buyBelt(beltName)
+    local args = {[1] = beltName}
+    return game:GetService("ReplicatedStorage").Packages.Knit.Services.BeltService.RF.ClickedBuyButton:InvokeServer(unpack(args))
+end
+
+local AutoBuyBeltsToggle = BeltSection:AddToggle("AutoBuyBelts", {
+    Title = "Auto Buy Belts",
+    Default = false 
+})
+
+AutoBuyBeltsToggle:OnChanged(function()
+    if AutoBuyBeltsToggle.Value then
+        spawn(function()
+            while AutoBuyBeltsToggle.Value do
+                local info = getBeltInfo()
+                
+                -- Debug prints
+                print("Current Belt:", info.currentBelt)
+                print("Current Yen:", info.yen)
+                print("Next Belt:", info.nextBelt)
+                print("Next Price:", info.nextPrice)
+                print("Can Afford:", info.canAfford)
+                
+                if info.canAfford then
+                    print("Attempting to buy", info.nextBelt)
+                    buyBelt(info.nextBelt)
+                    wait(1) -- Wait after purchase
+                end
+                
+                wait(0.5)
+            end
+        end)
+    end
+end)
+
+
+local ChestSection = Tabs.Main:AddSection("Ninja Chest")
+
+
+-- Auto Claim Santa Sleigh Gift toggle
+local AutoClaimToggle = Tabs.Main:AddToggle("AutoClaimSantaSleigh", { 
+    Title = "Auto Claim Ninja Chest", 
+    Default = false 
+})
+
+AutoClaimToggle:OnChanged(function()
+    if AutoClaimToggle.Value then
+        while AutoClaimToggle.Value do
+            local args = {
+                [1] = "NinjaChest"
+            }
+            game:GetService("ReplicatedStorage").Packages.Knit.Services.FreeGiftService.RF.Claim:InvokeServer(unpack(args))
+            wait(30)
+        end
+    end
+end)
+       
+
+local TowerSection = Tabs.Main:AddSection("Towers")
+
+-- Prison Cave Buttons
+TowerSection:AddButton({
+    Title = "Use Ninja Tower Key (1x)",
+    Description = "Use the Ninja Tower Key once.",
+    Callback = function()
+        local args = {
+            [1] = "NinjaTower",
+            [2] = false
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+TowerSection:AddButton({
+    Title = "Use All Ninja Tower Keys (250x)",
+    Description = "Use All Ninja Tower Keys (max 250 at a time).",
+    Callback = function()
+        local args = {
+            [1] = "NinjaTower",
+            [2] = true
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+
+
 -- Hidden Roulette Section
-local HiddenSection = Tabs.Main:AddSection("Hidden Roulette Wheel")
+local HiddenSection = Tabs.Main:AddSection("Ninja Fortnue Wheel")
 
 local HiddenSpinDropdown = Tabs.Main:AddDropdown("HiddenSpinAmount", {
-    Title = "Hidden Roulette",
+    Title = "Ninja Fortune Spin Amount",
     Description = "Select Wheel Spin Amount",
     Values = {"1x", "3x", "10x"},
     Multi = false,
@@ -623,7 +790,7 @@ local HiddenSpinDropdown = Tabs.Main:AddDropdown("HiddenSpinAmount", {
 })
 
 local AutoHiddenToggle = Tabs.Main:AddToggle("AutoHiddenSpin", {
-    Title = "Auto Hidden Roulette",
+    Title = "Auto Ninja Fortune Wheel",
     Default = false
 })
 
@@ -634,7 +801,7 @@ AutoHiddenToggle:OnChanged(function()
                 if not AutoHiddenToggle.Value then break end
                 
                 local args = {
-                    [1] = "Hidden Roulette",
+                    [1] = "Ninja Fortune",
                     [2] = HiddenSpinDropdown.Value == "3x" and "x10" or HiddenSpinDropdown.Value == "10x" and "x25" or nil
                 }
                 game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
@@ -645,60 +812,4 @@ AutoHiddenToggle:OnChanged(function()
     end
 end)
 
--- Snow-Ops Roulette Section
-local SnowOpsSection = Tabs.Main:AddSection("Snow-Ops Wheel")
 
-local SnowOpsSpinDropdown = Tabs.Main:AddDropdown("SnowOpsSpinAmount", {
-    Title = "Snow-Ops Roulette",
-    Description = "Select Wheel Spin Amount",
-    Values = {"1x", "3x", "10x"},
-    Multi = false,
-    Default = "1x"
-})
-
-local AutoSnowOpsToggle = Tabs.Main:AddToggle("AutoSnowOpsSpin", {
-    Title = "Auto Snow-Ops Roulette",
-    Default = false
-})
-
-AutoSnowOpsToggle:OnChanged(function()
-    if AutoSnowOpsToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoSnowOpsToggle.Value then break end
-                
-                local args = {
-                    [1] = "Snow-Ops Roulette",
-                    [2] = SnowOpsSpinDropdown.Value == "3x" and "x10" or SnowOpsSpinDropdown.Value == "10x" and "x25" or nil
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
-                
-                wait(1)
-            end
-        end)
-    end
-end)
-
-local ContrabandSection = Tabs.Main:AddSection("Contraband Crate")
-
--- Auto Contraband Toggle
-local AutoContrabandToggle = Tabs.Main:AddToggle("AutoContraband", {
-    Title = "Auto Contraband Crate",
-    Default = false
-})
-
-AutoContrabandToggle:OnChanged(function()
-    if AutoContrabandToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoContrabandToggle.Value then break end
-                
-                local args = {
-                    [1] = "Contraband Crate"
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.ItemCrateService.RF.Spin:InvokeServer(unpack(args))
-                wait(1)
-            end
-        end)
-    end
-end)
