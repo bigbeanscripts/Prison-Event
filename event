@@ -969,6 +969,28 @@ AutoDragonTrialToggle:OnChanged(function()
     end
 end)
 
+local DragonChestSection = Tabs.Event:AddSection("Dragon Chest")
+
+local AutoDragonChestToggle = DragonChestSection:AddToggle("AutoDragonChest", {
+    Title = "Auto Dragon Chest",
+    Description = "Auto use dragon keys to open Chest",
+    Default = false
+})
+
+AutoDragonChestToggle:OnChanged(function()
+    if AutoDragonChestToggle.Value then
+        spawn(function()
+            while AutoDragonChestToggle.Value do
+                local args = {
+                    [1] = "DragonChest"
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
+                wait(0.1)
+            end
+        end)
+    end
+end)
+
 -- Hidden Roulette Section
 local HiddenSection = Tabs.Event:AddSection("Ninja Fortnue Wheel")
 
