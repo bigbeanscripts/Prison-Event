@@ -848,7 +848,6 @@ TowerSection:AddButton({
 })
 
 -- After TowerSection
-
 -- Dragon Trial Section
 local DragonTrialSection = Tabs.Event:AddSection("Dragon Trial")
 
@@ -856,7 +855,6 @@ local DragonTrialSection = Tabs.Event:AddSection("Dragon Trial")
 local wasAutoFightOn = false
 local wasAutoBeatNPCOn = false
 local wasAutoTrainOn = false
-
 
 -- Add Status Label for cooldown
 local DragonTrialStatus = DragonTrialSection:AddParagraph({
@@ -882,7 +880,7 @@ end)
 
 local AutoDragonTrialToggle = DragonTrialSection:AddToggle("AutoDragonTrial", {
     Title = "Auto Dragon Trial",
-    Description = "Auto join the dragon trial. It will temporarily turn off the toggles for Auto Fight, Auto Beat NPC, and Auto Train if you had them enabled. It will returnn them to their previous state after the trial.",
+    Description = "Auto join the dragon trial. It will temporarily turn off the toggles for Auto Fight, Auto Beat NPC, and Auto Train if you had them enabled. It will return them to their previous state after the trial.",
     Default = false
 })
 
@@ -894,73 +892,58 @@ AutoDragonTrialToggle:OnChanged(function()
                     return game:GetService("Players").LocalPlayer.PlayerGui.Misc.Trials.Timer.Dragon.Timer
                 end)
                 
-                if success and timerGui and timerGui.Text == "Ready!" then
-                    -- Store toggle states
-                    wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
-                    wasAutoBeatNPCOn = AutoBeatNPCToggle and AutoBeatNPCToggle.Value or false 
-                    wasAutoTrainOn = AutoTrainToggle and AutoTrainToggle.Value or false
+                if success and timerGui then
+                    if timerGui.Text == "Ready!" then
+                        -- Store toggle states if they haven't been stored yet
+                        if not wasAutoFightOn and not wasAutoBeatNPCOn and not wasAutoTrainOn then
+                            wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
+                            wasAutoBeatNPCOn = AutoBeatNPCToggle and AutoBeatNPCToggle.Value or false 
+                            wasAutoTrainOn = AutoTrainToggle and AutoTrainToggle.Value or false
+                        end
 
-                    -- Disable toggles with retry
-                    for _, v in pairs({
-                        {toggle = AutoFightToggle, state = wasAutoFightOn},
-                        {toggle = AutoBeatNPCToggle, state = wasAutoBeatNPCOn},
-                        {toggle = AutoTrainToggle, state = wasAutoTrainOn}
-                    }) do
-                        if v.state and v.toggle then
-                            for i=1,3 do
-                                v.toggle:SetValue(false)
-                                wait(1)
-                                if not v.toggle.Value then break end
+                        -- Disable toggles with retry
+                        local function disableToggle(toggle)
+                            if toggle and toggle.Value then
+                                for i = 1, 3 do
+                                    toggle:SetValue(false)
+                                    wait(1)
+                                    if not toggle.Value then break end
+                                end
                             end
                         end
-                    end
 
-                    wait(6)
-                    
-                    -- Join trial with retry
-                    for i=1,3 do
-                        local args = {[1] = "Dragon"}
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
-                        wait(1)
-                    end
+                        disableToggle(AutoFightToggle)
+                        disableToggle(AutoBeatNPCToggle)
+                        disableToggle(AutoTrainToggle)
 
-                    -- Wait for trial completion
-                    local function getTime()
-                        return tonumber(timerGui.Text) or 0
-                    end
+                        wait(6) -- Wait before joining the trial
 
-                    wait(3) -- Initial delay
-                    
-                    local lastTime = getTime()
-                    local stuckCounter = 0
-                    
-                    while getTime() > 0 do
-                        wait(1)
-                        local currentTime = getTime()
-                        if currentTime == lastTime then
-                            stuckCounter = stuckCounter + 1
-                            if stuckCounter > 10 then break end
-                        else
-                            stuckCounter = 0
-                            lastTime = currentTime
+                        -- Join trial with retry
+                        for i = 1, 3 do
+                            local args = {[1] = "Dragon"}
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
+                            wait(1)
                         end
-                    end
-
-                    wait(2) -- Safety delay
-
-                    -- Restore toggles with retry
-                    for _, v in pairs({
-                        {toggle = AutoFightToggle, state = wasAutoFightOn},
-                        {toggle = AutoBeatNPCToggle, state = wasAutoBeatNPCOn},
-                        {toggle = AutoTrainToggle, state = wasAutoTrainOn}
-                    }) do
-                        if v.state and v.toggle then
-                            for i=1,3 do
-                                v.toggle:SetValue(true)
-                                wait(0.1)
-                                if v.toggle.Value then break end
+                    else
+                        -- Restore toggles only if the timer is not "Ready!"
+                        local function enableToggle(toggle, state)
+                            if state and toggle and not toggle.Value then
+                                for i = 1, 3 do
+                                    toggle:SetValue(true)
+                                    wait(0.1)
+                                    if toggle.Value then break end
+                                end
                             end
                         end
+
+                        enableToggle(AutoFightToggle, wasAutoFightOn)
+                        enableToggle(AutoBeatNPCToggle, wasAutoBeatNPCOn)
+                        enableToggle(AutoTrainToggle, wasAutoTrainOn)
+
+                        -- Reset stored states after restoring
+                        wasAutoFightOn = false
+                        wasAutoBeatNPCOn = false
+                        wasAutoTrainOn = false
                     end
                 end
                 wait(1)
