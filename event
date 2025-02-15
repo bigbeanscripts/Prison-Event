@@ -1,4 +1,4 @@
--- Ninja Event
+-- Pirate Event
 
 
 game:GetService("ReplicatedStorage").Packages.Knit.Services.WrestleService.RF.OnAutoFight:InvokeServer()
@@ -120,7 +120,7 @@ Shadow.ZIndex = MinimizeButton.ZIndex - 1
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/Main.lua"))()
 -- Create window with proper callbacks
 local Window = Fluent:CreateWindow({
-    Title = "Prison Event",
+    Title = "Pirate Event",
     SubTitle = "By Duckie",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
@@ -139,7 +139,7 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Event = Window:AddTab({ Title = "Ninja Event", Icon = "sword" })
+    Event = Window:AddTab({ Title = "Pirate Event", Icon = "pirate" })
 
 }
 
@@ -211,30 +211,21 @@ AutoPlaytimeToggle:OnChanged(function()
     end
 end)
 
-
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
-    -- Check each zone in priority order
-    if player:GetAttribute("ZoneDragonTemple") then
-        return "DragonTemple"
-    elseif player:GetAttribute("ZoneBlossomHeights") then
-        return "BlossomHeights"  
-    elseif player:GetAttribute("ZoneBlossomVillage") then
-        return "BlossomVillage"
+    if player:GetAttribute("ZoneTreasureIsland") then
+        return "TreasureIsland"
     else
-        return "NinjaSchool"
+        return "PirateTown"
     end
 end
 
 local function GetBestPrisonBag()
     local player = game.Players.LocalPlayer
     local currentZone = GetCurrentZone()
-    -- Updated attribute names for each zone
     local zoneAttributes = {
-        DragonTemple = "TotalNinjaKnuckles",
-        BlossomHeights = "TotalNinjaKnuckles",
-        BlossomVillage = "TotalNinjaKnuckles",
-        NinjaSchool = "TotalNinjaKnuckles"
+        PirateTown = "TotalPirateKnuckles",
+        TreasureIsland = "TotalPirateKnuckles"
     }
     
     local prisonKnuckle = player:GetAttribute(zoneAttributes[currentZone]) or 0
@@ -261,26 +252,19 @@ local function GetBestPrisonBag()
     return bestTier
 end
 
-
 local function GetBestPrisonEquipment()
     local player = game.Players.LocalPlayer
     local currentZone = GetCurrentZone()
-    -- Updated attribute names for each zone
     local zoneAttributes = {
-        DragonTemple = "TotalNinjaBicep",
-        BlossomHeights = "TotalNinjaBicep", 
-        BlossomVillage = "TotalNinjaBicep",
-        NinjaSchool = "TotalNinjaBicep"
+        PirateTown = "TotalPirateBicep",
+        TreasureIsland = "TotalPirateBicep"
     }
     
     local prisonBicep = player:GetAttribute(zoneAttributes[currentZone]) or 0
     local dumbbellData = require(game:GetService("ReplicatedStorage").Data.Dumbells)
-    -- Default dumbbell for each zone
     local defaultDumbbells = {
-        DragonTemple = "DragonTemple1",
-        BlossomHeights = "BlssomHeights1",
-        BlossomVillage = "Blossom1",
-        NinjaSchool = "Ninja1"
+        PirateTown = "PirateTown1",
+        TreasureIsland = "TreasureIsland1"
     }
     
     local bestDumbell = defaultDumbbells[currentZone]
@@ -300,17 +284,13 @@ local function GetBestPrisonEquipment()
     return bestDumbell
 end
 
-local function trainChi()
-    game:GetService("ReplicatedStorage").Packages.Knit.Services.ChiService.RF.SetChi:InvokeServer()
-end
-
 
 -- Add Training Section
 local TrainSection = Tabs.Event:AddSection("Auto Train")
 
 local TrainingDropdown = Tabs.Event:AddDropdown("TrainingSelect", {
     Title = "Select Training Type",
-    Values = {"Dumbells", "PunchBags", "Chi Zones"},
+    Values = {"Dumbells", "PunchBags"},  -- Removed Chi Zones as it's not in Pirate event
     Multi = false,
     Default = "Dumbells"
 })
@@ -320,112 +300,41 @@ local AutoTrainToggle = Tabs.Event:AddToggle("AutoTrain", {
     Default = false
 })
 
--- Create button after function exists
-local TrainChiButton = Tabs.Event:AddButton({
-    Title = "Train Chi",
-    Description = "Trains Chi (Outside of Zones)",
-    Callback = function()
-        trainChi()
-    end
-})
-
-
-
-local function getBestChiZone()
-    local player = game.Players.LocalPlayer
-    local chiLevel = player:GetAttribute("TotalNinjaChi") or 0
-    
-    -- Chi zone requirements and direct CFrames
-    local chiZones = {
-        {req = 2000, cf = CFrame.new(-2262.39429, 62.2289581, 6049.82715)},
-        {req = 25000, cf = CFrame.new(-2140.29126, 62.2289581, 6114.97607)},
-        {req = 250000, cf = CFrame.new(-2133.35864, 31.6659641, 7659.94141)},
-        {req = 1000000, cf = CFrame.new(-2081.46436, 127.705963, 7722.24707)}             
-    }
-    
-    local bestZone = nil
-    for _, zone in ipairs(chiZones) do
-        if chiLevel >= zone.req then
-            bestZone = zone
-        else
-            break -- Stop checking once we find a zone that the player cannot access
-        end
-    end
-    
-    return bestZone
-end
-
-
-
-
--- Update AutoTrainToggle handler
 AutoTrainToggle:OnChanged(function()
     if AutoTrainToggle.Value then
-        -- Start appropriate training loop based on selected type
         spawn(function()
             if TrainingDropdown.Value == "Dumbells" then
-                -- Initial equipment
-                local currentZone = GetCurrentZone()
-                local equipment = GetBestPrisonEquipment()
-                local args = {
-                    [1] = currentZone,
-                    [2] = "Dumbells", 
-                    [3] = equipment
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
-                
-                -- Re-equip and click loop
+                -- Function to equip Dumbells
+                local function equipDumbells()
+                    local currentZone = GetCurrentZone()
+                    local equipment = GetBestPrisonEquipment()
+                    local args = {
+                        [1] = currentZone,
+                        [2] = "Dumbells", 
+                        [3] = equipment
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+                end
+
+                -- Equip immediately
+                equipDumbells()
+
+                -- Click loop (every 0.2 seconds)
                 spawn(function()
                     while AutoTrainToggle.Value do
-                        -- Click
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                        wait(0.25)
-                        
-                        -- Re-equip every 6 seconds
-                        local timeElapsed = 0
-                        while timeElapsed < 6 and AutoTrainToggle.Value do
-                            wait(0.25)
-                            timeElapsed = timeElapsed + 0.25
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                        end
-                        
-                        if AutoTrainToggle.Value then
-                            local currentZone = GetCurrentZone()
-                            local equipment = GetBestPrisonEquipment()
-                            local args = {
-                                [1] = currentZone,
-                                [2] = "Dumbells",
-                                [3] = equipment
-                            }
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
-                        end
+                        wait(0.2)
                     end
                 end)
-                
-            elseif TrainingDropdown.Value == "Chi Zones" then
-                spawn(function()
-                    while AutoTrainToggle.Value and TrainingDropdown.Value == "Chi Zones" do
-                        -- Get best zone and teleport
-                        local bestZone = getBestChiZone()
-                        if bestZone then
-                            game.Players.LocalPlayer.Character:PivotTo(bestZone.cf)
-                        end
-                        
-                        -- Train chi
-                        trainChi()
-                        
-                        -- Wait 10 seconds between trains
-                        local timeElapsed = 0
-                        while timeElapsed < 3 and AutoTrainToggle.Value and TrainingDropdown.Value == "Chi Zones" do
-                            wait(1)
-                            timeElapsed = timeElapsed + 1
-                        end
-                        
-                        -- Break if toggle off or training changed
-                        if not AutoTrainToggle.Value or TrainingDropdown.Value ~= "Chi Zones" then break end
+
+                -- Re-equip loop (every 5 seconds)
+                while AutoTrainToggle.Value do
+                    wait(5) -- Wait 5 seconds before re-equipping
+                    if AutoTrainToggle.Value then
+                        equipDumbells()
                     end
-                end)
-                
+                end
+
             else -- PunchBags
                 spawn(function() 
                     while AutoTrainToggle.Value do
@@ -453,24 +362,21 @@ AutoTrainToggle:OnChanged(function()
 end)
 
 
--- Connect attribute change listeners
+
+-- Connect attribute change listeners for Pirate event
 local player = game.Players.LocalPlayer
-player:GetAttributeChangedSignal("ZoneBlossomVillage"):Connect(onAttributeChanged)
-player:GetAttributeChangedSignal("TotalNinjaChi"):Connect(onAttributeChanged)
-player:GetAttributeChangedSignal("TotalNinjaBicep"):Connect(onAttributeChanged)
-player:GetAttributeChangedSignal("TotalNinjaKnuckles"):Connect(onAttributeChanged)
-player:GetAttributeChangedSignal("TotalBlossomBicep"):Connect(onAttributeChanged)
-player:GetAttributeChangedSignal("TotalBlossomKnuckles"):Connect(onAttributeChanged)
+player:GetAttributeChangedSignal("ZonePirateTown"):Connect(onAttributeChanged)
+player:GetAttributeChangedSignal("ZoneTreasureIsland"):Connect(onAttributeChanged)
+player:GetAttributeChangedSignal("TotalPirateBicep"):Connect(onAttributeChanged)
+player:GetAttributeChangedSignal("TotalPirateKnuckles"):Connect(onAttributeChanged)
 
 
 -- Auto Fight Section
 local FightSection = Tabs.Event:AddSection("Auto Fight")
 
 local npcLocations = {
-    {path = workspace.GameObjects.ArmWrestling.NinjaSchool.NPC, zone = "NinjaSchool"},
-    {path = workspace.GameObjects.ArmWrestling.BlossomVillage.NPC, zone = "BlossomVillage"},
-    {path = workspace.GameObjects.ArmWrestling.BlossomHeights.NPC, zone = "BlossomHeights"},
-    {path = workspace.GameObjects.ArmWrestling.DragonTemple.NPC, zone = "DragonTemple"}
+    PirateTown = workspace.GameObjects.ArmWrestling.PirateTown.NPC,
+    TreasureIsland = workspace.GameObjects.ArmWrestling.TreasureIsland.NPC
 }
 
 local modelNames = {}
@@ -478,12 +384,12 @@ local models = {}
 local npcZones = {} -- Store which zone each NPC belongs to
 
 -- Gather NPCs from all locations
-for _, location in pairs(npcLocations) do
-    for _, npc in pairs(location.path:GetChildren()) do
+for zone, path in pairs(npcLocations) do
+    for _, npc in pairs(path:GetChildren()) do
         if npc:IsA("Model") then
             table.insert(models, npc)
             table.insert(modelNames, npc.Name)
-            npcZones[npc.Name] = location.zone
+            npcZones[npc.Name] = zone
         end
     end
 end
@@ -505,33 +411,22 @@ local AutoFightToggle = Tabs.Event:AddToggle("AutoFight", {
 AutoFightToggle:OnChanged(function()
     if AutoFightToggle.Value then
         spawn(function()
-            while true do
-                if not AutoFightToggle.Value then break end
+            while AutoFightToggle.Value do
                 local selectedNPC = modelDropdown.Value
                 if selectedNPC then
-                    -- Find the correct path based on the zone
                     local zone = npcZones[selectedNPC]
-                    local npcPath
-
-                    if zone == "NinjaSchool" then
-                        npcPath = workspace.GameObjects.ArmWrestling.NinjaSchool.NPC
-                    elseif zone == "BlossomVillage" then
-                        npcPath = workspace.GameObjects.ArmWrestling.BlossomVillage.NPC
-                    elseif zone == "BlossomHeights" then
-                        npcPath = workspace.GameObjects.ArmWrestling.BlossomHeights.NPC
-                    elseif zone == "DragonTemple" then
-                        npcPath = workspace.GameObjects.ArmWrestling.DragonTemple.NPC
-                    end
-                
+                    local npcPath = npcLocations[zone]
                     
-                    local npcModel = npcPath:FindFirstChild(selectedNPC)
-                    if npcModel and npcModel:FindFirstChild("Table") then
-                        local args = {
-                            [1] = selectedNPC,
-                            [2] = npcModel.Table,
-                            [3] = zone
-                        }
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RE.onEnterNPCTable:FireServer(unpack(args))
+                    if npcPath then
+                        local npcModel = npcPath:FindFirstChild(selectedNPC)
+                        if npcModel and npcModel:FindFirstChild("Table") then
+                            local args = {
+                                [1] = selectedNPC,
+                                [2] = npcModel.Table,
+                                [3] = zone
+                            }
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RE.onEnterNPCTable:FireServer(unpack(args))
+                        end
                     end
                 end
                 wait(1)
@@ -558,49 +453,6 @@ AutoClickToggle:OnChanged(function()
 end)
 
 
-local NPCSection = Tabs.Event:AddSection("Auto NPC Farm")
-local npcPath = workspace.GameObjects.RngNPCs.BlossomVillage.Npc
-local isAutoFarming = false
-
-local function updateProximityPrompts(folder)
-    for _, descendant in ipairs(folder:GetDescendants()) do
-        if descendant:IsA("ProximityPrompt") then
-            descendant.HoldDuration = 0
-            descendant.Style = Enum.ProximityPromptStyle.Default
-            descendant.MaxActivationDistance = 1000000000000
-            -- Directly trigger the proximity prompt
-            fireproximityprompt(descendant)
-        end
-    end
-end
-
-local AutoBeatNPCToggle = Tabs.Event:AddToggle("AutoBeatNPC", {
-    Title = "Auto Beat NPC",
-    Description = "Auto Fight Blossom Village NPCs",
-    Default = false
-})
-
-AutoBeatNPCToggle:OnChanged(function()
-    isAutoFarming = AutoBeatNPCToggle.Value
-    
-    if isAutoFarming then
-        -- Start proximity prompt updates
-        spawn(function()
-            while true do
-                if not AutoBeatNPCToggle.Value then break end
-                updateProximityPrompts(npcPath)
-                wait(1)
-            end
-        end)
-    else
-        -- Reset proximity prompt distance when toggle is turned off
-        for _, descendant in ipairs(npcPath:GetDescendants()) do
-            if descendant:IsA("ProximityPrompt") then
-                descendant.MaxActivationDistance = 6
-            end
-        end
-    end
-end)
 
 -- Eggs Section
 local EggSection = Tabs.Event:AddSection("Eggs")
@@ -616,9 +468,9 @@ local HatchAmountDropdown = Tabs.Event:AddDropdown("HatchAmount", {
 -- Egg Selection Dropdown
 local EggDropdown = Tabs.Event:AddDropdown("EggSelect", {
     Title = "Select Egg",
-    Values = {"Ninja", "Sensei", "Blossom", "Samurai", "Dragon"},
+    Values = {"PirateFish", "PirateShark", "GhostPirate"},
     Multi = false,
-    Default = "Ninja"
+    Default = "PirateFish"
 })
 
 -- Auto Hatch Toggle
@@ -681,7 +533,7 @@ AutoBuyToggle:OnChanged(function()
                     for number, isSelected in pairs(BlackMarketDropdown.Value) do
                         if isSelected then
                             local args = {
-                                [1] = "Blossom Merchant",
+                                [1] = "Treasure Merchant",
                                 [2] = number
                             }
                             game:GetService("ReplicatedStorage").Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(unpack(args))
@@ -696,56 +548,58 @@ AutoBuyToggle:OnChanged(function()
 end)
 
 
-
 -- Belt Section
 local BeltSection = Tabs.Event:AddSection("Auto Buy Belts")
 
 -- Toggle for Auto Buy
 local AutoBuyBeltsToggle = Tabs.Event:AddToggle("AutoBuyBelts", {
-    Title = "Buy Belts",
-    Description = "WARNING: It will keep buying the best belts for you, until you run out of Ninja Yen, or until you turn the toggle off.",
+    Title = "Buy Medallions",
+    Description = "WARNING: It will keep buying the best medallions for you, until you run out of gold coins, or until you turn the toggle off.",
     Default = false
 })
 
--- Static belt prices table
-local beltPrices = {
-    ["White"] = 0,
-    ["Yellow"] = 500,
-    ["Orange"] = 1250,
-    ["Green"] = 5000,
-    ["Blue"] = 12500,
-    ["Purple"] = 25000,
-    ["Brown"] = 50000,
-    ["Red"] = 100000,
-    ["Black"] = 250000,
-    ["Ember"] = 500000,
-    ["Storm"] = 1000000,
-    ["Wind"] = 2500000,
-    ["Nightfall"] = 5000000,
-    ["Flare"] = 10000000,
-    ["Rift"] = 25000000,
-    ["Ironclad"] = 50000000,
-    ["Chaos"] = 100000000,
-    ["Vortex"] = 250000000,
-    ["Nova"] = 350000000,
-    ["Eternal"] = 500000000,
-    ["Dragon"] = 1000000000
+-- Static belt data table (using the provided decompiled data)
+local beltData = {
+    Bronze = { Rank = "Pirate Recruit", Price = 0 },
+    Silver = { Rank = "Deckhand", Price = 500 },
+    Gold = { Rank = "Buccaneer", Price = 1250 },
+    Platinum = { Rank = "Rogue Sailor", Price = 5000 },
+    Crystal = { Rank = "Corsair", Price = 12500 },
+    Emerald = { Rank = "First Mate", Price = 25000 },
+    Ruby = { Rank = "Gunner", Price = 50000 },
+    Amethyst = { Rank = "Quartermaster", Price = 100000 },
+    Diamond = { Rank = "Sea Raider", Price = 250000 },
+    Treasure = { Rank = "Captain", Price = 500000 },
+    Battle = { Rank = "Warlord of the Seas", Price = 1000000 },
+    Skull = { Rank = "Cursed Corsair", Price = 2500000 },
+    Kraken = { Rank = "Kraken Slayer", Price = 5000000 },
+    Ship = { Rank = "Fleet Commander", Price = 10000000 },
+    Trident = { Rank = "Poseidon's Rival", Price = 25000000 },
+    Parrot = { Rank = "Legendary Buccaneer", Price = 50000000 },
+    Torch = { Rank = "Dread Captain", Price = 100000000 },
+    Map = { Rank = "Ghost Admiral", Price = 250000000 },
+    Galaxy = { Rank = "Celestial Raider", Price = 350000000 },
+    Sea = { Rank = "Ruler of the Seven Seas", Price = 500000000 },
+    PirateKing = { Rank = "Pirate King", Price = 1000000000 }
 }
 
--- Create sorted belt order
+-- Create sorted belt order based on price
 local beltOrder = {}
-for belt, price in pairs(beltPrices) do
-    table.insert(beltOrder, {name = belt, price = price})
+for beltName, data in pairs(beltData) do
+    table.insert(beltOrder, { name = beltName, price = data.Price })
 end
 table.sort(beltOrder, function(a, b) return a.price < b.price end)
 
--- Function to find next belt in progression
-local function findNextBelt(currentBelt)
-    local currentPrice = beltPrices[currentBelt]
-    
-    for i, beltData in ipairs(beltOrder) do
-        if beltData.price > currentPrice then
-            return beltData.name, beltData.price
+-- Function to find the next belt in progression
+local function findNextBelt(currentBeltName)
+    local currentBeltData = beltData[currentBeltName]
+    if not currentBeltData then return nil, nil end
+
+    local currentPrice = currentBeltData.Price
+
+    for i, belt in ipairs(beltOrder) do
+        if belt.price > currentPrice then
+            return belt.name, beltData[belt.name].Price
         end
     end
     return nil, nil
@@ -753,82 +607,64 @@ end
 
 AutoBuyBeltsToggle:OnChanged(function()
     if AutoBuyBeltsToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoBuyBeltsToggle.Value then break end
-                
-                local player = game.Players.LocalPlayer
-                local ninjaYen = player:GetAttribute("NinjaYen")
-                local equippedBelt = player:GetAttribute("EquippedNinjaBelt")
-       
-                
-                if ninjaYen and equippedBelt then
-                    -- Keep trying to buy next belts while we have enough yen
-                    local currentBelt = equippedBelt
-                    while true do
-                        local nextBelt, nextPrice = findNextBelt(currentBelt)
-                        
-                        if not nextBelt then
-                            break
-                        end
-                        
-                        
-                        if ninjaYen >= nextPrice then
-                            local args = {
-                                [1] = nextBelt
-                            }
-                            local success = game:GetService("ReplicatedStorage").Packages.Knit.Services.BeltService.RF.ClickedBuyButton:InvokeServer(unpack(args))
-                            
-                            if success then
-                                currentBelt = nextBelt
-                                wait(2) -- 2 second delay between purchases
-                            else
-                                break
-                            end
+        while AutoBuyBeltsToggle.Value do
+            local player = game.Players.LocalPlayer
+            local goldCoins = player:GetAttribute("GoldCoins") -- Ensure this is the correct attribute
+            local equippedBeltName = player:GetAttribute("EquippedPirateBelt") -- Ensure this is the correct attribute
+
+            -- Debugging: Print current values
+            print("Gold Coins:", goldCoins)
+            print("Equipped Belt Name:", equippedBeltName)
+
+            if goldCoins and equippedBeltName then
+                local currentBeltName = equippedBeltName
+                while AutoBuyBeltsToggle.Value do
+                    local nextBeltName, nextPrice = findNextBelt(currentBeltName)
+
+                    -- Debugging: Print next belt and price
+                    print("Next Belt Name:", nextBeltName)
+                    print("Next Price:", nextPrice)
+
+                    if not nextBeltName or not nextPrice then
+                        break -- Exit if no next belt is found
+                    end
+
+                    if goldCoins >= nextPrice then
+                        local args = {
+                            [1] = nextBeltName
+                        }
+                        local success, result = pcall(function()
+                            return game:GetService("ReplicatedStorage").Packages.Knit.Services.BeltService.RF.ClickedBuyButton:InvokeServer(unpack(args))
+                        end)
+
+                        if success and result then
+                            currentBeltName = nextBeltName
+                            wait(2) -- 2 second delay between purchases
                         else
                             break
                         end
+                    else
+                        break
                     end
                 end
-                
-                wait(2)
+            else
+                warn("GoldCoins or EquippedPirateBelt attribute is missing!")
             end
-        end)
-    end
-end)
 
-
-local ChestSection = Tabs.Event:AddSection("Ninja Chest")
-
-
--- Auto Claim Santa Sleigh Gift toggle
-local AutoClaimToggle = Tabs.Event:AddToggle("AutoClaimSantaSleigh", { 
-    Title = "Auto Claim Ninja Chest", 
-    Default = false 
-})
-
-AutoClaimToggle:OnChanged(function()
-    if AutoClaimToggle.Value then
-        while AutoClaimToggle.Value do
-            local args = {
-                [1] = "NinjaChest"
-            }
-            game:GetService("ReplicatedStorage").Packages.Knit.Services.FreeGiftService.RF.Claim:InvokeServer(unpack(args))
-            wait(30)
+            wait(2) -- Delay between checks
         end
     end
 end)
-       
 
 local TowerSection = Tabs.Event:AddSection("Towers")
 
 -- Prison Cave Buttons
 TowerSection:AddButton({
-    Title = "Use Ninja Tower Key (1x)",
-    Description = "Use the Ninja Tower Key once.",
+    Title = "Use Pirate Clash Tower Key (1x)",
+    Description = "Use the Pirate Clash Tower Key once.",
     Callback = function()
         local args = {
-            [1] = "NinjaTower",
+            [1] = "PirateClash",
             [2] = false
         }
         game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
@@ -836,175 +672,13 @@ TowerSection:AddButton({
 })
 
 TowerSection:AddButton({
-    Title = "Use All Ninja Tower Keys (250x)",
-    Description = "Use All Ninja Tower Keys (max 250 at a time).",
+    Title = "Use All Pirate Clash Tower Keys (250x)",
+    Description = "Use All Pirate Clash ower Keys (max 250 at a time).",
     Callback = function()
         local args = {
-            [1] = "NinjaTower",
+            [1] = "PirateClash",
             [2] = true
         }
         game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
     end
 })
-
--- After TowerSection
--- Dragon Trial Section
-local DragonTrialSection = Tabs.Event:AddSection("Dragon Trial")
-
--- Toggle state tracking
-local wasAutoFightOn = false
-local wasAutoBeatNPCOn = false
-local wasAutoTrainOn = false
-
--- Add Status Label for cooldown
-local DragonTrialStatus = DragonTrialSection:AddParagraph({
-    Title = "Dragon Trial Cooldown",
-    Content = "Loading..."
-})
-
--- Update status every second
-spawn(function()
-    while true do
-        local success, timerGui = pcall(function()
-            return game:GetService("Players").LocalPlayer.PlayerGui.Misc.Trials.Timer.Dragon.Timer
-        end)
-        
-        if success and timerGui then
-            DragonTrialStatus:SetDesc(timerGui.Text)
-        else
-            DragonTrialStatus:SetDesc("Error getting timer")
-        end
-        wait(1)
-    end
-end)
-
-local AutoDragonTrialToggle = DragonTrialSection:AddToggle("AutoDragonTrial", {
-    Title = "Auto Dragon Trial",
-    Description = "Auto join the dragon trial. It will temporarily turn off the toggles for Auto Fight, Auto Beat NPC, and Auto Train if you had them enabled. It will return them to their previous state after the trial.",
-    Default = false
-})
-
-AutoDragonTrialToggle:OnChanged(function()
-    if AutoDragonTrialToggle.Value then
-        spawn(function()
-            while AutoDragonTrialToggle.Value do
-                local success, timerGui = pcall(function()
-                    return game:GetService("Players").LocalPlayer.PlayerGui.Misc.Trials.Timer.Dragon.Timer
-                end)
-                
-                if success and timerGui then
-                    if timerGui.Text == "Ready!" then
-                        -- Store toggle states if they haven't been stored yet
-                        if not wasAutoFightOn and not wasAutoBeatNPCOn and not wasAutoTrainOn then
-                            wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
-                            wasAutoBeatNPCOn = AutoBeatNPCToggle and AutoBeatNPCToggle.Value or false 
-                            wasAutoTrainOn = AutoTrainToggle and AutoTrainToggle.Value or false
-                        end
-
-                        -- Disable toggles with retry
-                        local function disableToggle(toggle)
-                            if toggle and toggle.Value then
-                                for i = 1, 3 do
-                                    toggle:SetValue(false)
-                                    wait(1)
-                                    if not toggle.Value then break end
-                                end
-                            end
-                        end
-
-                        disableToggle(AutoFightToggle)
-                        disableToggle(AutoBeatNPCToggle)
-                        disableToggle(AutoTrainToggle)
-
-                        wait(6) -- Wait before joining the trial
-
-                        -- Join trial with retry
-                        for i = 1, 3 do
-                            local args = {[1] = "Dragon"}
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
-                            wait(1)
-                        end
-                    else
-                        -- Restore toggles only if the timer is not "Ready!"
-                        local function enableToggle(toggle, state)
-                            if state and toggle and not toggle.Value then
-                                for i = 1, 3 do
-                                    toggle:SetValue(true)
-                                    wait(0.1)
-                                    if toggle.Value then break end
-                                end
-                            end
-                        end
-
-                        enableToggle(AutoFightToggle, wasAutoFightOn)
-                        enableToggle(AutoBeatNPCToggle, wasAutoBeatNPCOn)
-                        enableToggle(AutoTrainToggle, wasAutoTrainOn)
-
-                        -- Reset stored states after restoring
-                        wasAutoFightOn = false
-                        wasAutoBeatNPCOn = false
-                        wasAutoTrainOn = false
-                    end
-                end
-                wait(1)
-            end
-        end)
-    end
-end)
-
-local DragonChestSection = Tabs.Event:AddSection("Dragon Chest")
-
-local AutoDragonChestToggle = DragonChestSection:AddToggle("AutoDragonChest", {
-    Title = "Auto Dragon Chest",
-    Description = "Auto use dragon keys to open Chest",
-    Default = false
-})
-
-AutoDragonChestToggle:OnChanged(function()
-    if AutoDragonChestToggle.Value then
-        spawn(function()
-            while AutoDragonChestToggle.Value do
-                local args = {
-                    [1] = "DragonChest"
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
-                wait(0.1)
-            end
-        end)
-    end
-end)
-
--- Hidden Roulette Section
-local HiddenSection = Tabs.Event:AddSection("Ninja Fortnue Wheel")
-
-local HiddenSpinDropdown = Tabs.Event:AddDropdown("HiddenSpinAmount", {
-    Title = "Ninja Fortune Spin Amount",
-    Description = "Select Wheel Spin Amount",
-    Values = {"1x", "3x", "10x"},
-    Multi = false,
-    Default = "1x"
-})
-
-local AutoHiddenToggle = Tabs.Event:AddToggle("AutoHiddenSpin", {
-    Title = "Auto Ninja Fortune Wheel",
-    Default = false
-})
-
-AutoHiddenToggle:OnChanged(function()
-    if AutoHiddenToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoHiddenToggle.Value then break end
-                
-                local args = {
-                    [1] = "Ninja Fortune",
-                    [2] = HiddenSpinDropdown.Value == "3x" and "x10" or HiddenSpinDropdown.Value == "10x" and "x25" or nil
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
-                
-                wait(1)
-            end
-        end)
-    end
-end)
-
