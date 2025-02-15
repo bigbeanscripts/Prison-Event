@@ -139,7 +139,7 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Event = Window:AddTab({ Title = "Pirate Event", Icon = "pirate" })
+    Event = Window:AddTab({ Title = "Pirate Event", Icon = "skull" })
 
 }
 
