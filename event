@@ -474,7 +474,7 @@ local HatchAmountDropdown = Tabs.Event:AddDropdown("HatchAmount", {
 -- Egg Selection Dropdown
 local EggDropdown = Tabs.Event:AddDropdown("EggSelect", {
     Title = "Select Egg",
-    Values = {"PirateFish", "PirateShark", "GhostPirate"},
+    Values = {"PirateFish", "PirateShark", "GhostPirate", "GhostKraken"},
     Multi = false,
     Default = "PirateFish"
 })
@@ -736,7 +736,7 @@ local TreasureDustStatus = TreasureChestSection:AddParagraph({
 -- Auto Craft Treasure Chests
 local AutoCraftToggle = TreasureChestSection:AddToggle("AutoCraft", {
     Title = "Auto Craft Treasure Chests",
-    Description = "Automatically craft when above 10 Treasure Dust",
+    Description = "Automatically craft Chests (If you have 10 or more Treasure Dust)",
     Default = false
 })
 
@@ -768,7 +768,7 @@ end)
 -- Add Auto Use Treasure Chests toggle
 local AutoUseChestsToggle = TreasureChestSection:AddToggle("AutoUseChests", {
     Title = "Auto Use Treasure Chests",
-    Description = "Automatically use Treasure Chests when available",
+    Description = "Automatically use Treasure Chests",
     Default = false
  })
  
