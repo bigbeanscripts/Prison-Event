@@ -722,6 +722,7 @@ AutoGhostFortuneToggle:OnChanged(function()
         end)
     end
 end)
+
 local TreasureChestSection = Tabs.Event:AddSection("Treasure Chests")
 
 -- Add Status Label for Treasure Dust
@@ -812,10 +813,8 @@ AutoCraftToggle:OnChanged(function(value)
                             }
                             ReplicatedStorage.Packages.Knit.Services.TreasureChestService.RF.Craft:InvokeServer(unpack(args))
                         end)
-                    else
-                        -- Stop if less than 10 dust
-                        break
                     end
+                    -- Removed the "break" statement here so the loop continues
                 else
                     TreasureDustStatus:SetDesc("Not Found")
                 end
