@@ -468,57 +468,111 @@ AutoClickToggle:OnChanged(function()
     end
 end)
 
+
 local NPCSection = Tabs.Event:AddSection("Auto Fight Npcs")
 
--- Create a dropdown with hero/villain names in alphabetical order
-local selectedNPC = "Dreadlord" -- Default selection
-local NPCDropdown = NPCSection:AddDropdown("NPCSelection", {
-    Title = "Select NPC",
-    Description = "Select an NPC to auto fight",
-    Values = {
-        "Dreadlord",
-        "Inferno",
-        "Phantom",
-        "Radiance",
-        "Skullbane",
-        "Spectron",
-        "Vortex"
-    },
-    Default = 1, -- DreadLord is first in alphabetical order
-})
+-- Storage for NPC data
+local npcData = {}
+local zoneIDs = {}
+local selectedZone = nil
 
-NPCDropdown:OnChanged(function(Value)
-    selectedNPC = Value
-end)
-
--- Add input for wait time
-local waitTime = 1.75 -- Default wait time
-local WaitTimeInput = NPCSection:AddInput("WaitTimeInput", {
-    Title = "Fight Interval",
-    Description = "Time between fighting the NPC (seconds)",
-    Default = "1.75",
-    Placeholder = "Enter time in seconds...",
-    Numeric = true,
-    Finished = false
-})
-
-WaitTimeInput:OnChanged(function(Value)
-    local num = tonumber(Value)
-    if num and num > 0 then
-        waitTime = num
-    else
-        -- Reset to default if invalid input
-        WaitTimeInput:SetValue("1.75")
-        waitTime = 1.75
+-- Function to discover Zone IDs from game data
+local function DiscoverZoneIDs()
+    local discoveredZones = {}
+    
+    -- Get necessary controllers
+    pcall(function()
+        local Knit = require(game.ReplicatedStorage.Packages.Knit)
+        local CacheController = Knit.GetController("CacheController")
+        local cache = CacheController:GetCache()
+        
+        -- Get Zone IDs directly from cache data
+        if cache and cache.Data and cache.Data.RngZones then
+            for zoneID, _ in pairs(cache.Data.RngZones) do
+                table.insert(discoveredZones, zoneID)
+            end
+        end
+    end)
+    
+    -- Sort the array
+    table.sort(discoveredZones)
+    
+    if #discoveredZones == 0 then
+        table.insert(discoveredZones, "Unknown")
     end
-end)
+    
+    return discoveredZones
+end
 
--- Toggle for proximity prompt modification and auto-trigger
-local AutoBeatNPCToggle = NPCSection:AddToggle("ModifyProximity", {
-    Title = "Auto Fight NPC",
-    Description = "Automatically fight the selected NPC",
-    Default = false
-})
+-- Function to update NPC IDs
+local function UpdateNPCIDs()
+    -- Clear previous data
+    npcData = {}
+    
+    -- Get necessary controllers
+    local Knit = require(game.ReplicatedStorage.Packages.Knit)
+    local CacheController = Knit.GetController("CacheController")
+    local cache = CacheController:GetCache()
+    
+    -- Get IDs from cache data
+    if cache and cache.Data and cache.Data.RngZones then
+        for zoneID, zoneNPCs in pairs(cache.Data.RngZones) do
+            -- Initialize data for this zone
+            npcData[zoneID] = {}
+            
+            -- Store all NPC IDs for this zone
+            for npcID, _ in pairs(zoneNPCs) do
+                table.insert(npcData[zoneID], npcID)
+            end
+        end
+    end
+end
+
+-- Function to extract NPC name from zone ID
+local function ExtractNPCNameFromZoneID(zoneID)
+    local parts = string.split(zoneID, "-")
+    if #parts > 1 then
+        return parts[2]
+    end
+    return zoneID -- Return original if no dash is found
+end
+
+-- Function to safely find NPC table
+local function FindNPCTable(zoneID, npcName)
+    -- Try to find the zone
+    local RngNPCs = workspace:FindFirstChild("GameObjects")
+    if not RngNPCs then return nil end
+    
+    RngNPCs = RngNPCs:FindFirstChild("RngNPCs")
+    if not RngNPCs then return nil end
+    
+    local zoneFolder = RngNPCs:FindFirstChild(zoneID)
+    if not zoneFolder then return nil end
+    
+    -- Check different path possibilities to find the table
+    
+    -- First attempt: Direct path to NPC table
+    if zoneFolder:FindFirstChild("Npc") and 
+       zoneFolder.Npc:FindFirstChild(npcName) and 
+       zoneFolder.Npc[npcName]:FindFirstChild("Table") then
+        return zoneFolder.Npc[npcName].Table
+    end
+    
+    -- Second attempt: NPC might be direct child with table
+    if zoneFolder:FindFirstChild(npcName) and 
+       zoneFolder[npcName]:FindFirstChild("Table") then
+        return zoneFolder[npcName].Table
+    end
+    
+    -- Third attempt: Look through all children for the first table
+    for _, child in pairs(zoneFolder:GetDescendants()) do
+        if child.Name == "Table" then
+            return child
+        end
+    end
+    
+    return nil
+end
 
 -- Function to get the correct proximity prompt path based on NPC selection
 local function getProximityPromptPath()
@@ -529,42 +583,110 @@ local function getProximityPromptPath()
         ["Vortex"] = true
     }
     
-    if evilLairNPCs[selectedNPC] then
-        return workspace.GameObjects.RngNPCs["EvilLair-" .. selectedNPC].Npc:GetChildren()[4].Table.Proximity.Attachment.ProximityPrompt
+    local npcName = ExtractNPCNameFromZoneID(selectedZone)
+    
+    if evilLairNPCs[npcName] then
+        return workspace.GameObjects.RngNPCs["EvilLair-" .. npcName].Npc:GetChildren()[4].Table.Proximity.Attachment.ProximityPrompt
     else
         -- For Phantom, Radiance, and Inferno
-        return workspace.GameObjects.RngNPCs["SuperheroCity-" .. selectedNPC].Npc[selectedNPC].Table.Proximity.Attachment.ProximityPrompt
+        return workspace.GameObjects.RngNPCs["SuperheroCity-" .. npcName].Npc[npcName].Table.Proximity.Attachment.ProximityPrompt
     end
 end
 
--- Monitor, modify, and trigger the proximity prompt
-AutoBeatNPCToggle:OnChanged(function()
-    spawn(function()
-        while AutoBeatNPCToggle.Value do
-            pcall(function()
-                local prompt = getProximityPromptPath()
-                if prompt then
-                    -- Modify the prompt
-                    prompt.HoldDuration = 0
-                    prompt.MaxActivationDistance = 1000
-                    
-                    -- Trigger the prompt
-                    fireproximityprompt(prompt)
-                end
-            end)
-            wait(waitTime) -- This now correctly uses the user's input value
-        end
-        
-        -- Reset prompt when toggle is turned off
+-- Initial discovery of Zone IDs
+zoneIDs = DiscoverZoneIDs()
+
+-- Initial NPC data update
+UpdateNPCIDs()
+
+-- Create dropdown with discovered Zone IDs
+selectedZone = zoneIDs[1]
+local NPCDropdown = NPCSection:AddDropdown("NPCSelection", {
+    Title = "Select Zone",
+    Description = "Select a zone to auto fight NPCs in",
+    Values = zoneIDs,
+    Default = 1,
+})
+
+NPCDropdown:OnChanged(function(Value)
+    selectedZone = Value
+end)
+
+-- Toggle for auto fighting
+local AutoFightNPCToggle = NPCSection:AddToggle("AutoFightNPC", {
+    Title = "Auto Fight NPC",
+    Description = "Automatically fight NPCs in the selected zone",
+    Default = false
+})
+
+-- Add the emergency button to handle stuck situations
+local EmergencyButton = NPCSection:AddButton({
+    Title = "Press if you're stuck fighting a boss",
+    Description = "When turning the toggle off you will likely get stuck, press this to fix it",
+    Callback = function()
         pcall(function()
             local prompt = getProximityPromptPath()
             if prompt then
-                prompt.HoldDuration = 0.25
-                prompt.MaxActivationDistance = 6
+                fireproximityprompt(prompt)
             end
         end)
+    end
+})
+
+-- Auto fight function
+AutoFightNPCToggle:OnChanged(function()
+    local isEnabled = AutoFightNPCToggle.Value
+    
+    spawn(function()
+        while AutoFightNPCToggle.Value do
+            -- Update NPC IDs every 1.5 seconds
+            UpdateNPCIDs()
+            
+            -- Get an NPC ID for the selected zone
+            if npcData[selectedZone] and #npcData[selectedZone] > 0 then
+                -- Get a random entry to avoid always using the same one
+                local randomIndex = math.random(1, #npcData[selectedZone])
+                local npcID = npcData[selectedZone][randomIndex]
+                
+                -- Call the remote function to fight NPC
+                pcall(function()
+                    local args = {
+                        [1] = selectedZone,
+                        [2] = npcID
+                    }
+                    
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.WrestleRNGService.RF.FightNpc:InvokeServer(unpack(args))
+                end)
+                
+                -- Wait a brief moment before entering the table
+                wait(0.2)
+                
+                -- Extract NPC name from the zone ID
+                local npcName = ExtractNPCNameFromZoneID(selectedZone)
+                
+                -- Find the table object safely
+                local tableObject = FindNPCTable(selectedZone, npcName)
+                
+                -- Only proceed if we found the table
+                if tableObject then
+                    pcall(function()
+                        local tableArgs = {
+                            [1] = npcName,
+                            [2] = tableObject
+                        }
+                        
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RE.onEnterNPCTable:FireServer(unpack(tableArgs))
+                    end)
+                end
+            end
+            
+            -- Wait 1.5 seconds before updating and trying again
+            wait(1.5)
+        end
     end)
 end)
+
+
 
 
 -- Eggs Section
@@ -950,4 +1072,190 @@ TowerSection:AddButton({
     end
 })
 
+
+
+local WheelSection = Tabs.Event:AddSection("Bulk Smash Wheel")
+
+local GhostFortuneSpinDropdown = Tabs.Event:AddDropdown("GhostFortuneSpinAmount", {
+    Title = "Spin Amount",
+    Description = "Select Wheel Spin Amount",
+    Values = {"1x", "3x", "10x"},
+    Multi = false,
+    Default = "1x"
+})
+
+local AutoGhostFortuneToggle = Tabs.Event:AddToggle("AutoGhostFortuneSpin", {
+    Title = "Auto Bulk Smash Fortune Wheel",
+    Default = false
+})
+
+AutoGhostFortuneToggle:OnChanged(function()
+    if AutoGhostFortuneToggle.Value then
+        spawn(function()
+            while true do
+                if not AutoGhostFortuneToggle.Value then break end
+                
+                local args = {
+                    [1] = "Bulk Smash Fortune",
+                    [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
+                
+                wait(1)
+            end
+        end)
+    end
+end)
+
+
+
+local TreasureMapSection = Tabs.Event:AddSection("Superhero Chests")
+
+-- Add Status Label for Captain Maps
+local TreasureMapStatus = TreasureMapSection:AddParagraph({
+    Title = "Hero Lightining Amount",
+    Content = "Loading..."
+})
+
+-- Auto Craft Captain Chests
+local AutoCraftCaptainToggle = TreasureMapSection:AddToggle("AutoCraftCaptain", {
+    Title = "Auto Craft Superhero Chests",
+    Description = "Automatically craft Chests (If you have 10 or more Hero Lightning",
+    Default = false
+})
+
+-- Add Auto Use Captain Chests toggle
+local AutoUseCaptainChestsToggle = TreasureMapSection:AddToggle("AutoUseCaptainChests", {
+    Title = "Auto Use Superhero Chests",
+    Description = "Automatically use Superhero chests",
+    Default = false 
+})
+
+-- Add Captain Chest counter status
+local CaptainChestStatus = TreasureMapSection:AddParagraph({
+    Title = "Captain Chest Amount",
+    Content = "Loading..."
+})
+
+-- Function to parse amount text and handle 'k' suffix
+local function parseAmount(amtText)
+    -- Remove the 'x' prefix
+    local numStr = amtText:match("x(.+)")
+    if not numStr then return 0 end
+    
+    -- Check if the number contains 'k'
+    if numStr:find("k") then
+        -- Remove 'k' and multiply by 1000
+        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
+        return baseNum and (baseNum * 1000) or 0
+    else
+        -- Regular number
+        return tonumber(numStr) or 0
+    end
+end
+
+-- Create invisible button for crafting
+local player = game:GetService("Players").LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local screenGui = player.PlayerGui:WaitForChild("ScreenGui")
+
+-- Create invisible button if it doesn't exist
+local captainButton = screenGui:FindFirstChild("InvisibleCaptainButton")
+if not captainButton then
+    captainButton = Instance.new("TextButton")
+    captainButton.Name = "InvisibleCaptainButton"
+    captainButton.Size = UDim2.new(0, 200, 0, 50)
+    captainButton.Position = UDim2.new(0, 100, 0, 100)
+    captainButton.BackgroundTransparency = 1
+    captainButton.TextTransparency = 1
+    captainButton.ZIndex = -100
+    captainButton.Parent = screenGui
+end
+
+-- Main functionality for auto crafting
+AutoCraftCaptainToggle:OnChanged(function(value)
+    if value then
+        spawn(function()
+            while AutoCraftCaptainToggle.Value do
+                -- Check Captain Map amount
+                local amtObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.MiscStorage.Objects:FindFirstChild("Hero Lightning/1")
+
+                
+                if amtObject then
+                    local amtText = amtObject.ButtonDisplay.Amt.Text
+                    local amount = parseAmount(amtText)
+                    TreasureMapStatus:SetDesc(amtText)
+                    
+                    -- Auto craft if amount >= 10
+                    if amount >= 10 then
+                        -- Click the invisible button and invoke server function
+                        pcall(function()
+                            captainButton.MouseButton1Click:Fire()
+                        end)
+                        
+                        -- Call the server function
+                        pcall(function()
+                            local args = {
+                                [1] = "Superhero Chest"
+                            }
+                            ReplicatedStorage.Packages.Knit.Services.TreasureChestService.RF.Craft:InvokeServer(unpack(args))
+                        end)
+                    end
+                else
+                    TreasureMapStatus:SetDesc("Not Found")
+                end
+                
+                -- Wait for 0.25 seconds before next attempt
+                wait(0.25)
+                
+                if not AutoCraftCaptainToggle.Value then break end
+            end
+        end)
+    end
+end)
+
+-- Update Captain Map status (runs even when auto-craft is disabled)
+spawn(function()
+    while true do
+        local amtObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.MiscStorage.Objects:FindFirstChild("Hero Lightning/1")
+        
+        if amtObject then
+            local amtText = amtObject.ButtonDisplay.Amt.Text
+            TreasureMapStatus:SetDesc(amtText)
+        else
+            TreasureMapStatus:SetDesc("Not Found")
+        end
+        
+        wait(1)
+    end
+end)
+
+-- Update chest status and handle auto-use
+spawn(function()
+    while true do
+        local player = game:GetService("Players").LocalPlayer
+        local chestObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.GiftsStorage.Objects:FindFirstChild("Superhero Chest/1")
+        
+        if chestObject then
+            local amtText = chestObject.ButtonDisplay.Amt.Text
+            local amount = parseAmount(amtText)
+            CaptainChestStatus:SetDesc(amtText)
+            
+            -- Auto use if enabled and has chests
+            if AutoUseCaptainChestsToggle.Value and amount >= 1 then
+                local args = {
+                    [1] = {
+                        ["Item"] = "Superhero Chest",
+                        ["Tier"] = "1"
+                    },
+                    [2] = (amount >= 8) and 8 or 1 -- Use 8 if we have 8+ chests, otherwise use 1
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ItemService.RF.UseChest:InvokeServer(unpack(args))
+            end
+        else
+            CaptainChestStatus:SetDesc("Not Found")
+        end
+        wait(1)
+    end
+end)
 
