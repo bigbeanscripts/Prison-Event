@@ -1465,8 +1465,6 @@ AutoDragonTrialToggle:OnChanged(function()
 end)
 
 
-
-
 -- Add Villain Chest Section
 local VillainChestSection = Tabs.Event:AddSection("Villain Chest")
 
@@ -1512,30 +1510,54 @@ if not villainButton then
     villainButton.Parent = screenGui
 end
 
--- Update Villain Chest Key status and handle auto-open
+-- Update Villain Chest Key status (always runs to update the counter)
 spawn(function()
     while true do
         local keyObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Villain Chest Key/1")
 
         if keyObject then
             local amtText = keyObject.ButtonDisplay.Amt.Text
-            local amount = parseAmount(amtText)
             VillainChestStatus:SetDesc(amtText)
-            
-            if AutoOpenVillainChestToggle.Value and amount > 0 then
-                pcall(function()
-                    villainButton.MouseButton1Click:Fire()
-                end)
-                
-                local args = {
-                    [1] = "VillainChest"
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
-            end
         else
             VillainChestStatus:SetDesc("Not Found")
         end
 
-        wait(0.1)
+        wait(1) -- Update status every second
     end
+end)
+
+-- Toggle for auto-opening the chest
+AutoOpenVillainChestToggle:OnChanged(function()
+    if AutoOpenVillainChestToggle.Value then
+        -- Start a new loop that only runs while the toggle is on
+        spawn(function()
+            while AutoOpenVillainChestToggle.Value do
+                local keyObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Villain Chest Key/1")
+                
+                if keyObject then
+                    local amtText = keyObject.ButtonDisplay.Amt.Text
+                    local amount = parseAmount(amtText)
+                    
+                    if amount > 0 then
+                        pcall(function()
+                            villainButton.MouseButton1Click:Fire()
+                        end)
+                        
+                        local args = {
+                            [1] = "VillainChest"
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
+                    end
+                end
+                
+                wait(0.1) -- Check frequently for keys
+                
+                -- Break out of the loop if the toggle is turned off
+                if not AutoOpenVillainChestToggle.Value then
+                    break
+                end
+            end
+        end)
+    end
+    -- When toggle is turned off, the loop will automatically stop because of the while condition
 end)
