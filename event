@@ -1317,8 +1317,8 @@ local DragonTrialSection = Tabs.Event:AddSection("Villain Trial")
 -- Toggle state tracking
 local wasAutoFightOn = false
 local wasAutoBeatNPCOn = false
-local hasJoinedTrial = false
-local lastTimerText = ""
+local lastJoinAttemptTime = 0
+local togglesDisabled = false
 
 -- Add Status Label for cooldown
 local DragonTrialStatus = DragonTrialSection:AddParagraph({
@@ -1350,120 +1350,87 @@ local AutoDragonTrialToggle = DragonTrialSection:AddToggle("AutoDragonTrial", {
 
 AutoDragonTrialToggle:OnChanged(function()
     if AutoDragonTrialToggle.Value then
-        -- Store the current toggle states only when first enabled
-        wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
-        wasAutoBeatNPCOn = AutoFightNPCToggle and AutoFightNPCToggle.Value or false
-        
         spawn(function()
             while AutoDragonTrialToggle.Value do
-                -- Check the trial timer
                 local success, timerGui = pcall(function()
                     return game:GetService("Players").LocalPlayer.PlayerGui.Misc.Trials.Timer.Villain.Timer
                 end)
-                
-                if success and timerGui then
-                    local currentTimerText = timerGui.Text
-                    
-                    -- Check if timer text has changed from previous loop
-                    local timerChanged = currentTimerText ~= lastTimerText
-                    lastTimerText = currentTimerText
-                    
-                    -- ONLY disable toggles when timer is exactly "Ready!"
-                    if currentTimerText == "Ready!" and not hasJoinedTrial then
 
-                        
-                        -- Disable NPC toggle and fire proximity prompt
-                        if AutoFightNPCToggle and AutoFightNPCToggle.Value then
-                            AutoFightNPCToggle:SetValue(false)
-                            wait(0.5)
+                if success and timerGui then
+                    -- If timer is Ready!, disable toggles and enter trial
+                    if timerGui.Text == "Ready!" then
+                        local currentTime = os.time()
+                        if currentTime - lastJoinAttemptTime < 180 then
+                            wait(1)
+                            continue
+                        end
+
+                        -- Only save and disable toggles if they aren't already disabled
+                        if not togglesDisabled then
+                            -- Save current toggle states
+                            wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
+                            wasAutoBeatNPCOn = AutoFightNPCToggle and AutoFightNPCToggle.Value or false
+
+                            -- Turn off toggles
+                            if wasAutoFightOn then
+                                AutoFightToggle:SetValue(false)
+                                wait(3)
+                            end
                             
-                            -- Fire proximity prompt after disabling NPC toggle
+                            if wasAutoBeatNPCOn then
+                                AutoFightNPCToggle:SetValue(false)
+                                wait(3)
+                            end
+
+                            togglesDisabled = true
+                        end
+
+                        -- Fire proximity prompt if AutoFightNPCToggle was on
+                        if wasAutoBeatNPCOn then
                             pcall(function()
                                 local prompt = getProximityPromptPath()
                                 if prompt then
                                     fireproximityprompt(prompt)
-                                    wait(1)
                                 end
                             end)
                         end
-                        
-                        -- Disable Fight toggle
-                        if AutoFightToggle and AutoFightToggle.Value then
-                            AutoFightToggle:SetValue(false)
-                            wait(0.5)
-                        end
-                        
-                        -- Join the trial
-                        local args = {[1] = "Villain"}
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
-                        
-                        hasJoinedTrial = true
+
+                        -- Wait 2 seconds before joining
+                        wait(5)
+
+                        -- Attempt to join the trial
+                        local args = { "Villain" }
+                        local result = game:GetService("ReplicatedStorage").Packages.Knit.Services.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
+                        lastJoinAttemptTime = os.time()
                     
-                    -- RESTORE toggles when timer is NOT "Ready!" AND we previously joined a trial AND timer changed
-                    elseif currentTimerText ~= "Ready!" and hasJoinedTrial and timerChanged then
-                        
-                        -- Wait a moment to ensure we're completely done with the trial
-                        wait(2)
-                        
-                        -- Restore fight toggle if it was on
-                        if wasAutoFightOn and AutoFightToggle and not AutoFightToggle.Value then
-                            AutoFightToggle:SetValue(true)
-                            wait(0.5)
+                    -- If timer is not Ready!, re-enable toggles that were on (after waiting 5 seconds)
+                    else
+                        if togglesDisabled then
+                            -- Wait 5 seconds before re-enabling toggles
+                            wait(5)
+                            
+                            if wasAutoFightOn and AutoFightToggle then
+                                AutoFightToggle:SetValue(true)
+                                wait(3)
+                            end
+                            
+                            if wasAutoBeatNPCOn and AutoFightNPCToggle then
+                                AutoFightNPCToggle:SetValue(true)
+                                wait(3)
+                            end
+                            
+                            wasAutoFightOn = false
+                            wasAutoBeatNPCOn = false
+                            togglesDisabled = false
                         end
-                        
-                        -- Restore NPC toggle if it was on
-                        if wasAutoBeatNPCOn and AutoFightNPCToggle and not AutoFightNPCToggle.Value then
-                            AutoFightNPCToggle:SetValue(true)
-                            wait(0.5)
-                        end
-                        
-                        -- Reset flag after restoring toggles
-                        hasJoinedTrial = false
-                    end
-                else
-                    -- If we can't find the timer but we joined a trial, consider restoring toggles
-                    if hasJoinedTrial then
-                        
-                        -- Restore fight toggle if it was on
-                        if wasAutoFightOn and AutoFightToggle and not AutoFightToggle.Value then
-                            AutoFightToggle:SetValue(true)
-                            wait(0.5)
-                        end
-                        
-                        -- Restore NPC toggle if it was on
-                        if wasAutoBeatNPCOn and AutoFightNPCToggle and not AutoFightNPCToggle.Value then
-                            AutoFightNPCToggle:SetValue(true)
-                            wait(0.5)
-                        end
-                        
-                        hasJoinedTrial = false
                     end
                 end
                 
-                wait(1) -- Check every second
+                wait(1)
             end
         end)
-    else
-        -- When toggle is turned off, restore toggles if necessary
-        if hasJoinedTrial then
-            
-            -- Restore fight toggle if it was on
-            if wasAutoFightOn and AutoFightToggle and not AutoFightToggle.Value then
-                AutoFightToggle:SetValue(true)
-                wait(0.5)
-            end
-            
-            -- Restore NPC toggle if it was on
-            if wasAutoBeatNPCOn and AutoFightNPCToggle and not AutoFightNPCToggle.Value then
-                AutoFightNPCToggle:SetValue(true)
-                wait(0.5)
-            end
-            
-            hasJoinedTrial = false
-        end
     end
 end)
-
 
 -- Add Villain Chest Section
 local VillainChestSection = Tabs.Event:AddSection("Villain Chest")
@@ -1510,12 +1477,11 @@ if not villainButton then
     villainButton.Parent = screenGui
 end
 
--- Update Villain Chest Key status (always runs to update the counter)
 spawn(function()
     while true do
-        local keyObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Villain Chest Key/1")
+        local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Villain Chest Key/1")
 
-        if keyObject then
+        if keyObject and keyObject:FindFirstChild("ButtonDisplay") then
             local amtText = keyObject.ButtonDisplay.Amt.Text
             VillainChestStatus:SetDesc(amtText)
         else
@@ -1526,13 +1492,14 @@ spawn(function()
     end
 end)
 
+
 -- Toggle for auto-opening the chest
 AutoOpenVillainChestToggle:OnChanged(function()
     if AutoOpenVillainChestToggle.Value then
         -- Start a new loop that only runs while the toggle is on
         spawn(function()
             while AutoOpenVillainChestToggle.Value do
-                local keyObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Villain Chest Key/1")
+                    local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Villain Chest Key/1")
                 
                 if keyObject then
                     local amtText = keyObject.ButtonDisplay.Amt.Text
