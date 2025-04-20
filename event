@@ -164,7 +164,7 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Event = Window:AddTab({ Title = "Hero", Icon = "flame" })
+    Event = Window:AddTab({ Title = "Easter", Icon = "chocolate" })
 }
 
 -- Initialize state
@@ -196,103 +196,33 @@ CloseButton.MouseButton1Click:Connect(function()
 end)
 
 
-local PlaytimeSection = Tabs.Event:AddSection("Playtime Pass")
-
-local AutoPlaytimeToggle = PlaytimeSection:AddToggle("AutoPlaytime", {
-    Title = "Auto Claim Playtime Pass",
-    Default = false
-})
-
-AutoPlaytimeToggle:OnChanged(function()
-    if AutoPlaytimeToggle.Value then
-        -- Claim rewards immediately when enabled
-        for i = 1, 12 do
-            local args = {
-                [1] = "Free",
-                [2] = i
-            }
-            game:GetService("ReplicatedStorage").Packages.Knit.Services.EventPassService.RF.ClaimReward:InvokeServer(unpack(args))
-        end
-        
-        -- Start reset/claim loop
-        spawn(function()
-            while AutoPlaytimeToggle.Value do
-                wait(60) -- Wait before reset
-                
-                -- Reset pass
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.EventPassService.RF.Reset:InvokeServer()
-                
-                -- Claim all rewards after reset
-                for i = 1, 12 do
-                    local args = {
-                        [1] = "Free",
-                        [2] = i
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.EventPassService.RF.ClaimReward:InvokeServer(unpack(args))
-                end
-            end
-        end)
-    end
-end)
-
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
-    if player:GetAttribute("ZoneVillainCave") then
-        return "VillainCave"
-    elseif player:GetAttribute("ZoneHeroCity") then
-        return "HeroCity"
+    -- Check if the player has the 'ZoneEasterEvent' attribute
+    if player:GetAttribute("ZoneEasterEvent") then
+        return "EasterEvent"
     end
 
+    -- Return nil if the attribute isn't found
     return nil
 end
 
 
-local function GetBestPrisonBag()
-    local player = game.Players.LocalPlayer
-    local currentZone = GetCurrentZone()
-    local zoneAttributes = {
-        HeroCity = "TotalSuperKnuckles",
-        VillainCave = "TotalSuperKnuckles"
-    }
     
-    local prisonKnuckle = player:GetAttribute(zoneAttributes[currentZone]) or 0
-    local punchBagData = require(game:GetService("ReplicatedStorage").Data.PunchBags)
-    
-    if player:GetAttribute("VIP") == true then
-        return "VIP"
-    end
-    
-    local bestTier = "Tier1"  
-    local highestRequired = 0
-    
-    if punchBagData and punchBagData[currentZone] then
-        for tier, data in pairs(punchBagData[currentZone]) do
-            if data.StrengthRequired and 
-               prisonKnuckle >= data.StrengthRequired and 
-               data.StrengthRequired > highestRequired then
-                bestTier = tier
-                highestRequired = data.StrengthRequired
-            end
-        end
-    end
-    
-    return bestTier
-end
+
 
 local function GetBestPrisonEquipment()
     local player = game.Players.LocalPlayer
     local currentZone = GetCurrentZone()
     local zoneAttributes = {
-        HeroCity = "TotalSuperPower",
-        VillainCave = "TotalSuperPower"
+        EasterEvent = "TotalEasterStrength2025",
     }
     
     local prisonBicep = player:GetAttribute(zoneAttributes[currentZone]) or 0
     local dumbbellData = require(game:GetService("ReplicatedStorage").Data.Dumbells)
     local defaultDumbbells = {
-        HeroCity = "HeroCity1",
-        VillainCave = "VillainCave1"
+        EasterEvent = "EasterEvent1"
     }
     
     local bestDumbell = defaultDumbbells[currentZone]
@@ -312,13 +242,12 @@ local function GetBestPrisonEquipment()
     return bestDumbell
 end
 
-
 -- Add Training Section
 local TrainSection = Tabs.Event:AddSection("Auto Train")
 
 local TrainingDropdown = Tabs.Event:AddDropdown("TrainingSelect", {
     Title = "Select Training Type",
-    Values = {"Dumbells", "PunchBags"}, 
+    Values = {"Dumbells"}, 
     Multi = false,
     Default = "Dumbells"
 })
@@ -330,60 +259,34 @@ local AutoTrainToggle = Tabs.Event:AddToggle("AutoTrain", {
 
 AutoTrainToggle:OnChanged(function()
     if AutoTrainToggle.Value then
-        spawn(function()
-            if TrainingDropdown.Value == "Dumbells" then
-                -- Function to equip Dumbells
-                local function equipDumbells()
-                    local currentZone = GetCurrentZone()
-                    local equipment = GetBestPrisonEquipment()
-                    local args = {
-                        [1] = currentZone,
-                        [2] = "Dumbells", 
-                        [3] = equipment
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
-                end
+        -- Function to equip Dumbells
+        local function equipDumbells()
+            local currentZone = GetCurrentZone()
+            local equipment = GetBestPrisonEquipment()
+            local args = {
+                [1] = currentZone,
+                [2] = "Dumbells", 
+                [3] = equipment
+            }
+            game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+        end
 
-                -- Equip immediately
+        -- Equip immediately
+        equipDumbells()
+
+        -- Click loop (every 0.2 seconds)
+        task.spawn(function()
+            while AutoTrainToggle.Value do
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
+                task.wait(0.2)
+            end
+        end)
+
+        -- Re-equip loop (every 5 seconds)
+        task.spawn(function()
+            while AutoTrainToggle.Value do
+                task.wait(5)
                 equipDumbells()
-
-                -- Click loop (every 0.2 seconds)
-                spawn(function()
-                    while AutoTrainToggle.Value do
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                        wait(0.2)
-                    end
-                end)
-
-                -- Re-equip loop (every 5 seconds)
-                while AutoTrainToggle.Value do
-                    wait(5) -- Wait 5 seconds before re-equipping
-                    if AutoTrainToggle.Value then
-                        equipDumbells()
-                    end
-                end
-
-            else -- PunchBags
-                spawn(function() 
-                    while AutoTrainToggle.Value do
-                        local currentZone = GetCurrentZone()
-                        local tier = GetBestPrisonBag()
-                        local bag = workspace.Zones[currentZone].Interactables.Training.PunchBags[tier]
-                        
-                        if bag then
-                            local bagCFrame = bag:GetPivot()
-                            game.Players.LocalPlayer.Character:PivotTo(bagCFrame * CFrame.new(0, 0, -5))
-                            
-                            local args = {
-                                [1] = currentZone,
-                                [2] = tier,
-                                [3] = game.Players.LocalPlayer:GetAttribute("VIP") == true
-                            }
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
-                        end
-                        wait(0.25)
-                    end
-                end)
             end
         end)
     end
@@ -397,8 +300,7 @@ end)
 local FightSection = Tabs.Event:AddSection("Auto Fight")
 
 local npcLocations = {
-    HeroCity = workspace.GameObjects.ArmWrestling.HeroCity.NPC,
-    VillainCave = workspace.GameObjects.ArmWrestling.VillainCave.NPC
+    EasterEvent = workspace.GameObjects.ArmWrestling.EasterEvent.NPC,
 }
 
 local modelNames = {}
@@ -475,234 +377,6 @@ AutoClickToggle:OnChanged(function()
 end)
 
 
-local NPCSection = Tabs.Event:AddSection("Auto Fight Npcs")
-
--- Storage for NPC data
-local npcData = {}
-local zoneIDs = {}
-local selectedZone = nil
-
--- Function to discover Zone IDs from game data
-local function DiscoverZoneIDs()
-    local discoveredZones = {}
-    
-    -- Get necessary controllers
-    pcall(function()
-        local Knit = require(game.ReplicatedStorage.Packages.Knit)
-        local CacheController = Knit.GetController("CacheController")
-        local cache = CacheController:GetCache()
-        
-        -- Get Zone IDs directly from cache data
-        if cache and cache.Data and cache.Data.RngZones then
-            for zoneID, _ in pairs(cache.Data.RngZones) do
-                table.insert(discoveredZones, zoneID)
-            end
-        end
-    end)
-    
-    -- Sort the array
-    table.sort(discoveredZones)
-    
-    if #discoveredZones == 0 then
-        table.insert(discoveredZones, "Unknown")
-    end
-    
-    return discoveredZones
-end
-
--- Function to update NPC IDs
-local function UpdateNPCIDs()
-    -- Clear previous data
-    npcData = {}
-    
-    -- Get necessary controllers
-    local Knit = require(game.ReplicatedStorage.Packages.Knit)
-    local CacheController = Knit.GetController("CacheController")
-    local cache = CacheController:GetCache()
-    
-    -- Get IDs from cache data
-    if cache and cache.Data and cache.Data.RngZones then
-        for zoneID, zoneNPCs in pairs(cache.Data.RngZones) do
-            -- Initialize data for this zone
-            npcData[zoneID] = {}
-            
-            -- Store all NPC IDs for this zone
-            for npcID, _ in pairs(zoneNPCs) do
-                table.insert(npcData[zoneID], npcID)
-            end
-        end
-    end
-end
-
--- Function to extract NPC name from zone ID
-local function ExtractNPCNameFromZoneID(zoneID)
-    local parts = string.split(zoneID, "-")
-    if #parts > 1 then
-        return parts[2]
-    end
-    return zoneID -- Return original if no dash is found
-end
-
--- Function to safely find NPC table
-local function FindNPCTable(zoneID, npcName)
-    -- Try to find the zone
-    local RngNPCs = workspace:FindFirstChild("GameObjects")
-    if not RngNPCs then return nil end
-    
-    RngNPCs = RngNPCs:FindFirstChild("RngNPCs")
-    if not RngNPCs then return nil end
-    
-    local zoneFolder = RngNPCs:FindFirstChild(zoneID)
-    if not zoneFolder then return nil end
-    
-    -- Check different path possibilities to find the table
-    
-    -- First attempt: Direct path to NPC table
-    if zoneFolder:FindFirstChild("Npc") and 
-       zoneFolder.Npc:FindFirstChild(npcName) and 
-       zoneFolder.Npc[npcName]:FindFirstChild("Table") then
-        return zoneFolder.Npc[npcName].Table
-    end
-    
-    -- Second attempt: NPC might be direct child with table
-    if zoneFolder:FindFirstChild(npcName) and 
-       zoneFolder[npcName]:FindFirstChild("Table") then
-        return zoneFolder[npcName].Table
-    end
-    
-    -- Third attempt: Look through all children for the first table
-    for _, child in pairs(zoneFolder:GetDescendants()) do
-        if child.Name == "Table" then
-            return child
-        end
-    end
-    
-    return nil
-end
-
--- Function to get the correct proximity prompt path based on NPC selection
-local function getProximityPromptPath()
-
-    local villainCaveNPCs = {
-        ["Boombeard"] = true,
-        ["FacelessRecruit"] = true
-    }
-
-    local evilLairNPCs = {
-        ["Dreadlord"] = true,
-        ["Skullbane"] = true,
-        ["Spectron"] = true,
-        ["Vortex"] = true
-    }
-
-
-
-    local npcName = ExtractNPCNameFromZoneID(selectedZone)
-
-    if villainCaveNPCs[npcName] then
-        return workspace.GameObjects.RngNPCs["VillainCave-" .. npcName].Npc:GetChildren()[4].Table.Proximity.Attachment.ProximityPrompt
-    elseif evilLairNPCs[npcName] then
-        return workspace.GameObjects.RngNPCs["EvilLair-" .. npcName].Npc:GetChildren()[4].Table.Proximity.Attachment.ProximityPrompt
-    else
-        -- For Phantom, Radiance, and Inferno
-        return workspace.GameObjects.RngNPCs["SuperheroCity-" .. npcName].Npc[npcName].Table.Proximity.Attachment.ProximityPrompt
-    end
-end
-
--- Initial discovery of Zone IDs
-zoneIDs = DiscoverZoneIDs()
-
--- Initial NPC data update
-UpdateNPCIDs()
-
--- Create dropdown with discovered Zone IDs
-selectedZone = zoneIDs[1]
-local NPCDropdown = NPCSection:AddDropdown("NPCSelection", {
-    Title = "Select NPC",
-    Description = "Select an NPC to fight.",
-    Values = zoneIDs,
-    Default = "VillainCave-Boombeard",
-})
-
-NPCDropdown:OnChanged(function(Value)
-    selectedZone = Value
-end)
-
--- Toggle for auto fighting
-local AutoFightNPCToggle = NPCSection:AddToggle("AutoFightNPC", {
-    Title = "Auto Fight NPC",
-    Description = "Automatically fight the selected NPC.",
-    Default = false
-})
-
--- Add the emergency button to handle stuck situations
-local EmergencyButton = NPCSection:AddButton({
-    Title = "Press if you're stuck fighting an NPC",
-    Description = "When turning the toggle off you will likely get stuck, press this to fix it",
-    Callback = function()
-        pcall(function()
-            local prompt = getProximityPromptPath()
-            if prompt then
-                fireproximityprompt(prompt)
-            end
-        end)
-    end
-})
-
--- Auto fight function
-AutoFightNPCToggle:OnChanged(function()
-    local isEnabled = AutoFightNPCToggle.Value
-    
-    spawn(function()
-        while AutoFightNPCToggle.Value do
-            -- Update NPC IDs every 1.5 seconds
-            UpdateNPCIDs()
-            
-            -- Get an NPC ID for the selected zone
-            if npcData[selectedZone] and #npcData[selectedZone] > 0 then
-                -- Get a random entry to avoid always using the same one
-                local randomIndex = math.random(1, #npcData[selectedZone])
-                local npcID = npcData[selectedZone][randomIndex]
-                
-                -- Call the remote function to fight NPC
-                pcall(function()
-                    local args = {
-                        [1] = selectedZone,
-                        [2] = npcID
-                    }
-                    
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.WrestleRNGService.RF.FightNpc:InvokeServer(unpack(args))
-                end)
-                
-                -- Wait a brief moment before entering the table
-                wait(0.2)
-                
-                -- Extract NPC name from the zone ID
-                local npcName = ExtractNPCNameFromZoneID(selectedZone)
-                
-                -- Find the table object safely
-                local tableObject = FindNPCTable(selectedZone, npcName)
-                
-                -- Only proceed if we found the table
-                if tableObject then
-                    pcall(function()
-                        local tableArgs = {
-                            [1] = npcName,
-                            [2] = tableObject
-                        }
-                        
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RE.onEnterNPCTable:FireServer(unpack(tableArgs))
-                    end)
-                end
-            end
-            
-            -- Wait 1.5 seconds before updating and trying again
-            wait(1.5)
-        end
-    end)
-end)
-
-
 
 
 -- Eggs Section
@@ -760,45 +434,13 @@ AutoHatchToggle:OnChanged(function()
     end
 end)
 
-localClickChestSection = Tabs.Event:AddSection("Giga Hero chest")
-
-local AutoClickToggle = Tabs.Event:AddToggle("AutoClickToggle", {
-    Title = "Auto Click Giga Hero Chest",
-    Default = false
-})
-
--- Auto-click functionality
-AutoClickToggle:OnChanged(function()
-    if AutoClickToggle.Value then
-        -- Set click detector max distance to very high value
-        local clickDetector = workspace.GameObjects.GigaChest.HeroChest.Chest.ClickDetector
-        if clickDetector then
-            clickDetector.MaxActivationDistance = 10200393949349
-        end
-        
-        -- Start auto-clicking
-        spawn(function()
-            while true do
-                if not AutoClickToggle.Value then break end
-                
-                -- Click the detector
-                local clickDetector = workspace.GameObjects.GigaChest.HeroChest.Chest.ClickDetector
-                if clickDetector then
-                    fireclickdetector(clickDetector)
-                end
-                
-                wait(0.1) -- Wait 0.1 seconds before next click
-            end
-        end)
-    end
-end)
 
 local AutoUpgradeSection = Tabs.Event:AddSection("Auto Upgrade")
 
 -- Power Multiplier Toggle
 local PowerMultiplierToggle = AutoUpgradeSection:AddToggle("PowerMultiplier", {
-    Title = "Power Multiplier",
-    Description = "Auto upgrade Super Power Multiplier",
+    Title = "Easter Strength Multiplier",
+    Description = "Auto upgrade Easter Strength Multiplier",
     Default = false
 })
 
@@ -809,7 +451,7 @@ PowerMultiplierToggle:OnChanged(function()
                 -- Buy 3 times with 1 second delay
                 for i = 1, 3 do
                     local args = {
-                        [1] = "Super Power Multiplier"
+                        [1] = "Easter Strength Multiplier"
                     }
                     game:GetService("ReplicatedStorage").Packages.Knit.Services.HeroUpgradeService.RF.BuyUpgrade:InvokeServer(unpack(args))
                     wait(1)
@@ -824,8 +466,8 @@ end)
 
 -- Knuckles Multiplier Toggle
 local KnucklesMultiplierToggle = AutoUpgradeSection:AddToggle("KnucklesMultiplier", {
-    Title = "Knuckles Multiplier",
-    Description = "Auto upgrade Super Knuckles Multiplier",
+    Title = "Easter Egg Multiplier",
+    Description = "Auto upgrade Easter Egg Multiplier",
     Default = false
 })
 
@@ -836,7 +478,7 @@ KnucklesMultiplierToggle:OnChanged(function()
                 -- Buy 3 times with 1 second delay
                 for i = 1, 3 do
                     local args = {
-                        [1] = "Super Knuckles Multiplier"
+                        [1] = "Easter Egg Multiplier"
                     }
                     game:GetService("ReplicatedStorage").Packages.Knit.Services.HeroUpgradeService.RF.BuyUpgrade:InvokeServer(unpack(args))
                     wait(1)
@@ -851,8 +493,8 @@ end)
 
 -- Coins Multiplier Toggle
 local CoinsMultiplierToggle = AutoUpgradeSection:AddToggle("CoinsMultiplier", {
-    Title = "Coins Multiplier",
-    Description = "Auto upgrade Super Coin Multiplier",
+    Title = "Luck Multiplier",
+    Description = "Auto upgrade Luck Multiplier",
     Default = false
 })
 
@@ -863,7 +505,7 @@ CoinsMultiplierToggle:OnChanged(function()
                 -- Buy 3 times with 1 second delay
                 for i = 1, 3 do
                     local args = {
-                        [1] = "Super Coin Multiplier"
+                        [1] = "Luck Multiplier"
                     }
                     game:GetService("ReplicatedStorage").Packages.Knit.Services.HeroUpgradeService.RF.BuyUpgrade:InvokeServer(unpack(args))
                     wait(1)
@@ -876,32 +518,6 @@ CoinsMultiplierToggle:OnChanged(function()
     end
 end)
 
--- Gem Chance Toggle
-local GemChanceToggle = AutoUpgradeSection:AddToggle("GemChance", {
-    Title = "Gem Chance",
-    Description = "Auto upgrade Gem Chance Multiplier",
-    Default = false
-})
-
-GemChanceToggle:OnChanged(function()
-    if GemChanceToggle.Value then
-        spawn(function()
-            while GemChanceToggle.Value do
-                -- Buy 3 times with 1 second delay
-                for i = 1, 3 do
-                    local args = {
-                        [1] = "Gem Chance Multiplier"
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.HeroUpgradeService.RF.BuyUpgrade:InvokeServer(unpack(args))
-                    wait(1)
-                end
-                
-                -- Wait 10 seconds before repeating
-                wait(30)
-            end
-        end)
-    end
-end)
 
 local MerchantSection = Tabs.Event:AddSection("Merchant")
 
@@ -927,7 +543,7 @@ AutoBuyToggle:OnChanged(function()
                     for number, isSelected in pairs(BlackMarketDropdown.Value) do
                         if isSelected then
                             local args = {
-                                [1] = "Evil Merchant",
+                                [1] = "Bunnies Merchant",
                                 [2] = number
                             }
                             game:GetService("ReplicatedStorage").Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(unpack(args))
@@ -941,590 +557,3 @@ AutoBuyToggle:OnChanged(function()
     end
 end)
 
-
-local HeroSpeedrunSection = Tabs.Event:AddSection("Hero Speedrun")
-
--- Toggle state tracking
-local wasAutoFightOn = false
-local wasAutoBeatNPCOn = false
-local wasAutoTrainOn = false
-
--- Add Status Label for cooldown
-local HeroSpeedrunStatus = HeroSpeedrunSection:AddParagraph({
-    Title = "Hero Speedrun Cooldown",
-    Content = "Loading..."
-})
-
--- Update status every second
-spawn(function()
-    while true do
-        local success, timerGui = pcall(function()
-            return workspace.GameObjects.Minigames.SpeedrunMinigames.HeroSpeedrun.Visual.BillboardGui.Timer
-        end)
-        
-        if success and timerGui then
-            HeroSpeedrunStatus:SetDesc(timerGui.Text)
-        else
-            HeroSpeedrunStatus:SetDesc("Waiting for timer...")
-        end
-        wait(1)
-    end
-end)
-
-local AutoHeroSpeedrunToggle = HeroSpeedrunSection:AddToggle("AutoHeroSpeedrun", {
-    Title = "Auto Hero Speedrun",
-    Description = "Auto join the Hero Speedrun. It will temporarily turn off the toggles for Auto Fight, Auto Beat NPC, and Auto Train if you had them enabled. It will return them to their previous state after the speedrun.",
-    Default = false
-})
-
-AutoHeroSpeedrunToggle:OnChanged(function()
-    if AutoHeroSpeedrunToggle.Value then
-        spawn(function()
-            while AutoHeroSpeedrunToggle.Value do
-                local success, timerGui = pcall(function()
-                    return workspace.GameObjects.Minigames.SpeedrunMinigames.HeroSpeedrun.Visual.BillboardGui.Timer
-                end)
-                
-                if success and timerGui then
-                    if timerGui.Text == "Touch to play!" then
-                        -- Store toggle states if they haven't been stored yet
-                        if not wasAutoFightOn and not wasAutoBeatNPCOn and not wasAutoTrainOn then
-                            wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
-                            wasAutoBeatNPCOn = AutoFightNPCToggle and AutoFightNPCToggle.Value or false 
-                            wasAutoTrainOn = AutoTrainToggle and AutoTrainToggle.Value or false
-                        end
-
-                        -- Disable toggles with retry
-                        local function disableToggle(toggle)
-                            if toggle and toggle.Value then
-                                for i = 1, 3 do
-                                    toggle:SetValue(false)
-                                    wait(1)
-                                    if not toggle.Value then break end
-                                end
-                            end
-                        end
-
-                        disableToggle(AutoFightToggle)
-                        disableToggle(AutoFightNPCToggle)
-                        disableToggle(AutoTrainToggle)
-
-                        wait(3) -- Wait before joining the speedrun
-
-                        -- Join speedrun
-                        local args = {
-                            [1] = "HeroSpeedrun"
-                        }
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.SpeedrunMinigameService.RF.EnterSpeedrun:InvokeServer(unpack(args))
-                        
-                        -- Teleport to the ending
-                        local player = game:GetService("Players").LocalPlayer
-                        local character = player.Character or player.CharacterAdded:Wait()
-                        local hrp = character:WaitForChild("HumanoidRootPart")
-                        
-                        local ending = workspace.GameObjects.Minigames.SpeedrunMinigames.HeroSpeedrun.Ending
-                        if ending then
-                            hrp.CFrame = ending.CFrame
-                        end
-                        
-                        wait(5) -- Wait after completion before re-enabling toggles
-                    else
-                        -- Restore toggles only if the timer is not "Ready!" and we previously saved states
-                        if wasAutoFightOn or wasAutoBeatNPCOn or wasAutoTrainOn then
-                            local function enableToggle(toggle, state)
-                                if state and toggle and not toggle.Value then
-                                    for i = 1, 3 do
-                                        toggle:SetValue(true)
-                                        wait(0.1)
-                                        if toggle.Value then break end
-                                    end
-                                end
-                            end
-                            
-                            wait(3) -- Wait before re-enabling toggles
-                            
-                            enableToggle(AutoFightToggle, wasAutoFightOn)
-                            enableToggle(AutoFightNPCToggle, wasAutoBeatNPCOn)
-                            enableToggle(AutoTrainToggle, wasAutoTrainOn)
-
-                            -- Reset stored states after restoring
-                            wasAutoFightOn = false
-                            wasAutoBeatNPCOn = false
-                            wasAutoTrainOn = false
-                        end
-                    end
-                end
-                wait(1)
-            end
-        end)
-    end
-end)
-
-
-local TowerSection = Tabs.Event:AddSection("Towers")
-
--- Prison Cave Buttons
-TowerSection:AddButton({
-    Title = "Use Villain Hideout Key (1x)",
-    Description = "Use the Villain Hideout Key once.",
-    Callback = function()
-        local args = {
-            [1] = "VillainHideout",
-            [2] = false
-        }
-        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
-    end
-})
-
-TowerSection:AddButton({
-    Title = "Use All Villain Hideout Keys (250x)",
-    Description = "Use All Villain Hideout Keys (max 250 at a time).",
-    Callback = function()
-        local args = {
-            [1] = "VillainHideout",
-            [2] = true
-        }
-        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
-    end
-})
-
-
-
-local WheelSection = Tabs.Event:AddSection("Bulk Smash Wheel")
-
-local GhostFortuneSpinDropdown = Tabs.Event:AddDropdown("GhostFortuneSpinAmount", {
-    Title = "Spin Amount",
-    Description = "Select Wheel Spin Amount",
-    Values = {"1x", "3x", "10x"},
-    Multi = false,
-    Default = "1x"
-})
-
-local AutoGhostFortuneToggle = Tabs.Event:AddToggle("AutoGhostFortuneSpin", {
-    Title = "Auto Bulk Smash Fortune Wheel",
-    Default = false
-})
-
-AutoGhostFortuneToggle:OnChanged(function()
-    if AutoGhostFortuneToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoGhostFortuneToggle.Value then break end
-                
-                local args = {
-                    [1] = "Bulk Smash Fortune",
-                    [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
-                
-                wait(1)
-            end
-        end)
-    end
-end)
-
-
-local WheelSection = Tabs.Event:AddSection("Crimson Wheel")
-
-local GhostFortuneSpinDropdown = Tabs.Event:AddDropdown("GhostFortuneSpinAmount", {
-    Title = "Crimson Fortune Spin Amount",
-    Description = "Select Wheel Spin Amount",
-    Values = {"1x", "3x", "10x"},
-    Multi = false,
-    Default = "1x"
-})
-
-local AutoGhostFortuneToggle = Tabs.Event:AddToggle("AutoGhostFortuneSpin", {
-    Title = "Auto Crimson Fortune Wheel",
-    Default = false
-})
-
-AutoGhostFortuneToggle:OnChanged(function()
-    if AutoGhostFortuneToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoGhostFortuneToggle.Value then break end
-                
-                local args = {
-                    [1] = "Crimson Fortune",
-                    [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
-                
-                wait(1)
-            end
-        end)
-    end
-end)
-
-
-
-
-local TreasureMapSection = Tabs.Event:AddSection("Superhero Chests")
-
--- Add Status Label for Captain Maps
-local TreasureMapStatus = TreasureMapSection:AddParagraph({
-    Title = "Hero Lightining Amount",
-    Content = "Loading..."
-})
-
--- Auto Craft Captain Chests
-local AutoCraftCaptainToggle = TreasureMapSection:AddToggle("AutoCraftCaptain", {
-    Title = "Auto Craft Superhero Chests",
-    Description = "Automatically craft Chests (If you have 10 or more Hero Lightning",
-    Default = false
-})
-
--- Add Auto Use Captain Chests toggle
-local AutoUseCaptainChestsToggle = TreasureMapSection:AddToggle("AutoUseCaptainChests", {
-    Title = "Auto Use Superhero Chests",
-    Description = "Automatically use Superhero chests",
-    Default = false 
-})
-
--- Add Captain Chest counter status
-local CaptainChestStatus = TreasureMapSection:AddParagraph({
-    Title = "Captain Chest Amount",
-    Content = "Loading..."
-})
-
--- Function to parse amount text and handle 'k' suffix
-local function parseAmount(amtText)
-    -- Remove the 'x' prefix
-    local numStr = amtText:match("x(.+)")
-    if not numStr then return 0 end
-    
-    -- Check if the number contains 'k'
-    if numStr:find("k") then
-        -- Remove 'k' and multiply by 1000
-        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
-        return baseNum and (baseNum * 1000) or 0
-    else
-        -- Regular number
-        return tonumber(numStr) or 0
-    end
-end
-
--- Create invisible button for crafting
-local player = game:GetService("Players").LocalPlayer
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local screenGui = player.PlayerGui:WaitForChild("ScreenGui")
-
--- Create invisible button if it doesn't exist
-local captainButton = screenGui:FindFirstChild("InvisibleCaptainButton")
-if not captainButton then
-    captainButton = Instance.new("TextButton")
-    captainButton.Name = "InvisibleCaptainButton"
-    captainButton.Size = UDim2.new(0, 200, 0, 50)
-    captainButton.Position = UDim2.new(0, 100, 0, 100)
-    captainButton.BackgroundTransparency = 1
-    captainButton.TextTransparency = 1
-    captainButton.ZIndex = -100
-    captainButton.Parent = screenGui
-end
-
--- Main functionality for auto crafting
-AutoCraftCaptainToggle:OnChanged(function(value)
-    if value then
-        spawn(function()
-            while AutoCraftCaptainToggle.Value do
-                -- Check Captain Map amount
-                local amtObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.MiscStorage.Objects:FindFirstChild("Hero Lightning/1")
-
-                
-                if amtObject then
-                    local amtText = amtObject.ButtonDisplay.Amt.Text
-                    local amount = parseAmount(amtText)
-                    TreasureMapStatus:SetDesc(amtText)
-                    
-                    -- Auto craft if amount >= 10
-                    if amount >= 10 then
-                        -- Click the invisible button and invoke server function
-                        pcall(function()
-                            captainButton.MouseButton1Click:Fire()
-                        end)
-                        
-                        -- Call the server function
-                        pcall(function()
-                            local args = {
-                                [1] = "Superhero Chest"
-                            }
-                            ReplicatedStorage.Packages.Knit.Services.TreasureChestService.RF.Craft:InvokeServer(unpack(args))
-                        end)
-                    end
-                else
-                    TreasureMapStatus:SetDesc("Not Found")
-                end
-                
-                -- Wait for 0.25 seconds before next attempt
-                wait(0.25)
-                
-                if not AutoCraftCaptainToggle.Value then break end
-            end
-        end)
-    end
-end)
-
--- Update Captain Map status (runs even when auto-craft is disabled)
-spawn(function()
-    while true do
-        local amtObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.MiscStorage.Objects:FindFirstChild("Hero Lightning/1")
-        
-        if amtObject then
-            local amtText = amtObject.ButtonDisplay.Amt.Text
-            TreasureMapStatus:SetDesc(amtText)
-        else
-            TreasureMapStatus:SetDesc("Not Found")
-        end
-        
-        wait(1)
-    end
-end)
-
--- Update chest status and handle auto-use
-spawn(function()
-    while true do
-        local player = game:GetService("Players").LocalPlayer
-        local chestObject = player.PlayerGui.GameUI.Menus.Items.Display.Items.MainFrame.ScrollingFrame.GiftsStorage.Objects:FindFirstChild("Superhero Chest/1")
-        
-        if chestObject then
-            local amtText = chestObject.ButtonDisplay.Amt.Text
-            local amount = parseAmount(amtText)
-            CaptainChestStatus:SetDesc(amtText)
-            
-            -- Auto use if enabled and has chests
-            if AutoUseCaptainChestsToggle.Value and amount >= 1 then
-                local args = {
-                    [1] = {
-                        ["Item"] = "Superhero Chest",
-                        ["Tier"] = "1"
-                    },
-                    [2] = (amount >= 8) and 8 or 1 -- Use 8 if we have 8+ chests, otherwise use 1
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.ItemService.RF.UseChest:InvokeServer(unpack(args))
-            end
-        else
-            CaptainChestStatus:SetDesc("Not Found")
-        end
-        wait(1)
-    end
-end)
-
-
--- Dragon Trial Section
-local DragonTrialSection = Tabs.Event:AddSection("Villain Trial")
-
--- Toggle state tracking
-local wasAutoFightOn = false
-local wasAutoBeatNPCOn = false
-local lastJoinAttemptTime = 0
-local togglesDisabled = false
-
--- Add Status Label for cooldown
-local DragonTrialStatus = DragonTrialSection:AddParagraph({
-    Title = "Villain Trial Cooldown",
-    Content = "Loading..."
-})
-
--- Update status every second
-spawn(function()
-    while true do
-        local success, timerGui = pcall(function()
-            return game:GetService("Players").LocalPlayer.PlayerGui.Misc.Trials.Timer.Villain.Timer
-        end)
-        
-        if success and timerGui then
-            DragonTrialStatus:SetDesc(timerGui.Text)
-        else
-            DragonTrialStatus:SetDesc("Error getting timer")
-        end
-        wait(1)
-    end
-end)
-
-local AutoDragonTrialToggle = DragonTrialSection:AddToggle("AutoDragonTrial", {
-    Title = "Auto Join Villain Trial",
-    Description = "Auto join the Villain trial. It will temporarily turn off the toggles for Auto Fight and Auto Beat NPC if you had them enabled. It will return them to their previous state after the trial.",
-    Default = false
-})
-
-AutoDragonTrialToggle:OnChanged(function()
-    if AutoDragonTrialToggle.Value then
-        spawn(function()
-            while AutoDragonTrialToggle.Value do
-                local success, timerGui = pcall(function()
-                    return game:GetService("Players").LocalPlayer.PlayerGui.Misc.Trials.Timer.Villain.Timer
-                end)
-
-                if success and timerGui then
-                    -- If timer is Ready!, disable toggles and enter trial
-                    if timerGui.Text == "Ready!" then
-                        local currentTime = os.time()
-                        if currentTime - lastJoinAttemptTime < 180 then
-                            wait(1)
-                            continue
-                        end
-
-                        -- Only save and disable toggles if they aren't already disabled
-                        if not togglesDisabled then
-                            -- Save current toggle states
-                            wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
-                            wasAutoBeatNPCOn = AutoFightNPCToggle and AutoFightNPCToggle.Value or false
-
-                            -- Turn off toggles
-                            if wasAutoFightOn then
-                                AutoFightToggle:SetValue(false)
-                                wait(3)
-                            end
-                            
-                            if wasAutoBeatNPCOn then
-                                AutoFightNPCToggle:SetValue(false)
-                                wait(3)
-                            end
-
-                            togglesDisabled = true
-                        end
-
-                        -- Fire proximity prompt if AutoFightNPCToggle was on
-                        if wasAutoBeatNPCOn then
-                            pcall(function()
-                                local prompt = getProximityPromptPath()
-                                if prompt then
-                                    fireproximityprompt(prompt)
-                                end
-                            end)
-                        end
-
-                        -- Wait 2 seconds before joining
-                        wait(5)
-
-                        -- Attempt to join the trial
-                        local args = { "Villain" }
-                        local result = game:GetService("ReplicatedStorage").Packages.Knit.Services.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
-                        lastJoinAttemptTime = os.time()
-                    
-                    -- If timer is not Ready!, re-enable toggles that were on (after waiting 5 seconds)
-                    else
-                        if togglesDisabled then
-                            -- Wait 5 seconds before re-enabling toggles
-                            wait(5)
-                            
-                            if wasAutoFightOn and AutoFightToggle then
-                                AutoFightToggle:SetValue(true)
-                                wait(3)
-                            end
-                            
-                            if wasAutoBeatNPCOn and AutoFightNPCToggle then
-                                AutoFightNPCToggle:SetValue(true)
-                                wait(3)
-                            end
-                            
-                            wasAutoFightOn = false
-                            wasAutoBeatNPCOn = false
-                            togglesDisabled = false
-                        end
-                    end
-                end
-                
-                wait(1)
-            end
-        end)
-    end
-end)
-
--- Add Villain Chest Section
-local VillainChestSection = Tabs.Event:AddSection("Villain Chest")
-
--- Add Status Label for Villain Chest Key Amount
-local VillainChestStatus = VillainChestSection:AddParagraph({
-    Title = "Villain Chest Key Amount",
-    Content = "Loading..."
-})
-
--- Add Toggle for Auto Open Villain Chest
-local AutoOpenVillainChestToggle = VillainChestSection:AddToggle("AutoOpenVillainChest", {
-    Title = "Auto Open Villain Chest",
-    Description = "Automatically opens Villain Chest if you have a key",
-    Default = false
-})
-
--- Function to parse amount text and handle 'k' suffix
-local function parseAmount(amtText)
-    local numStr = amtText:match("%d+%.?%d*")
-    if not numStr then return 0 end
-    
-    if amtText:find("K") or amtText:find("k") then
-        local baseNum = tonumber(numStr)
-        return baseNum and (baseNum * 1000) or 0
-    else
-        return tonumber(numStr) or 0
-    end
-end
-
--- Create invisible button if it doesn't exist
-local player = game:GetService("Players").LocalPlayer
-local screenGui = player.PlayerGui:WaitForChild("ScreenGui")
-
-local villainButton = screenGui:FindFirstChild("InvisibleVillainButton")
-if not villainButton then
-    villainButton = Instance.new("TextButton")
-    villainButton.Name = "InvisibleVillainButton"
-    villainButton.Size = UDim2.new(0, 200, 0, 50)
-    villainButton.Position = UDim2.new(0, 100, 0, 100)
-    villainButton.BackgroundTransparency = 1
-    villainButton.TextTransparency = 1
-    villainButton.ZIndex = -100
-    villainButton.Parent = screenGui
-end
-
-spawn(function()
-    while true do
-        local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Villain Chest Key/1")
-
-        if keyObject and keyObject:FindFirstChild("ButtonDisplay") then
-            local amtText = keyObject.ButtonDisplay.Amt.Text
-            VillainChestStatus:SetDesc(amtText)
-        else
-            VillainChestStatus:SetDesc("Not Found")
-        end
-
-        wait(1) -- Update status every second
-    end
-end)
-
-
--- Toggle for auto-opening the chest
-AutoOpenVillainChestToggle:OnChanged(function()
-    if AutoOpenVillainChestToggle.Value then
-        -- Start a new loop that only runs while the toggle is on
-        spawn(function()
-            while AutoOpenVillainChestToggle.Value do
-                    local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Villain Chest Key/1")
-                
-                if keyObject then
-                    local amtText = keyObject.ButtonDisplay.Amt.Text
-                    local amount = parseAmount(amtText)
-                    
-                    if amount > 0 then
-                        pcall(function()
-                            villainButton.MouseButton1Click:Fire()
-                        end)
-                        
-                        local args = {
-                            [1] = "VillainChest"
-                        }
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
-                    end
-                end
-                
-                wait(0.1) -- Check frequently for keys
-                
-                -- Break out of the loop if the toggle is turned off
-                if not AutoOpenVillainChestToggle.Value then
-                    break
-                end
-            end
-        end)
-    end
-    -- When toggle is turned off, the loop will automatically stop because of the while condition
-end)
