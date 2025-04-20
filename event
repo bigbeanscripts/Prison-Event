@@ -145,7 +145,7 @@ Shadow.ZIndex = MinimizeButton.ZIndex - 1
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/Main.lua"))()
 -- Create window with proper callbacks
 local Window = Fluent:CreateWindow({
-    Title = "Hero Event",
+    Title = "Easter Event",
     SubTitle = "By Duckie",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
@@ -164,7 +164,7 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Event = Window:AddTab({ Title = "Easter", Icon = "chocolate" })
+    Event = Window:AddTab({ Title = "Easter Event", Icon = "carrot" })
 }
 
 -- Initialize state
