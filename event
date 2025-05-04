@@ -1,6 +1,6 @@
--- Hero Event
+-- Easter Event
 
--- Function to get all valid egg names in alphabetical order
+-- Function to get all valid egg names in alphabetical order, excluding "Egg Rewind"
 local function getEggNames()
     local eggNames = {}
     local zones = workspace:FindFirstChild("Zones")
@@ -13,7 +13,9 @@ local function getEggNames()
                     local eggs = interactables:FindFirstChild("Eggs")
                     if eggs then
                         for _, egg in pairs(eggs:GetChildren()) do
-                            table.insert(eggNames, egg.Name)
+                            if egg.Name ~= "Rewind" then
+                                table.insert(eggNames, egg.Name)
+                            end
                         end
                     end
                 end
@@ -28,226 +30,123 @@ end
 
 game:GetService("ReplicatedStorage").Packages.Knit.Services.WrestleService.RF.OnAutoFight:InvokeServer()
 
--- Create a ScreenGui for our minimize button
-local MinimizeGui = Instance.new("ScreenGui")
-MinimizeGui.Name = "MinimizeGui"
-MinimizeGui.Parent = game.Players.LocalPlayer:WaitForChild("PlayerGui")
-MinimizeGui.ResetOnSpawn = false
 
--- Create the minimize button with centered positioning
-local MinimizeButton = Instance.new("TextButton")
-MinimizeButton.Name = "MinimizeButton"
-MinimizeButton.Parent = MinimizeGui
-MinimizeButton.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-MinimizeButton.BorderColor3 = Color3.fromRGB(50, 50, 50)
-MinimizeButton.AnchorPoint = Vector2.new(0.5, 0.5)
-MinimizeButton.Position = UDim2.new(0.5, 0, 0.5, 0)
-MinimizeButton.Size = UDim2.new(0, 80, 0, 40)
-MinimizeButton.Font = Enum.Font.GothamBold
-MinimizeButton.Text = "Close"
-MinimizeButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-MinimizeButton.TextSize = 16.000
-
--- Add corner radius
-local UICorner = Instance.new("UICorner")
-UICorner.CornerRadius = UDim.new(0, 6)
-UICorner.Parent = MinimizeButton
-
--- Create X button for removal
-local CloseButton = Instance.new("TextButton")
-CloseButton.Name = "CloseButton"
-CloseButton.Parent = MinimizeButton
-CloseButton.BackgroundTransparency = 1
-CloseButton.Position = UDim2.new(1, -20, 0, 0)
-CloseButton.Size = UDim2.new(0, 20, 0, 20)
-CloseButton.Font = Enum.Font.GothamBold
-CloseButton.Text = "×"
-CloseButton.TextColor3 = Color3.fromRGB(255, 255, 255)
-CloseButton.TextSize = 16.000
-CloseButton.ZIndex = 2
-
--- Close button functionality
-CloseButton.MouseButton1Click:Connect(function()
-    -- Destroy the MinimizeButton and CloseButton
-    MinimizeButton:Destroy()
-    CloseButton:Destroy()
-    -- Optionally, destroy the entire GUI if needed
-    MinimizeGui:Destroy()
-end)
+local Library = loadstring(game:HttpGetAsync("https://github.com/ActualMasterOogway/Fluent-Renewed/releases/latest/download/Fluent.luau"))()
+local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/SaveManager.luau"))()
+local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/InterfaceManager.luau"))()
 
 
-
--- Make button draggable
-local UserInputService = game:GetService("UserInputService")
-local dragging
-local dragStart
-local startPos
-
-MinimizeButton.InputBegan:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseButton1 then
-        dragging = true
-        dragStart = input.Position
-        startPos = MinimizeButton.Position
-        
-        input.Changed:Connect(function()
-            if input.UserInputState == Enum.UserInputState.End then
-                dragging = false
-            end
-        end)
-    end
-end)
-
-UserInputService.InputChanged:Connect(function(input)
-    if input.UserInputType == Enum.UserInputType.MouseMovement and dragging then
-        local delta = input.Position - dragStart
-        MinimizeButton.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
-    end
-end)
-
--- Add hover effects for Event button
-MinimizeButton.MouseEnter:Connect(function()
-    game:GetService("TweenService"):Create(MinimizeButton, TweenInfo.new(0.2), {
-        BackgroundColor3 = Color3.fromRGB(40, 40, 40)
-    }):Play()
-end)
-
-MinimizeButton.MouseLeave:Connect(function()
-    game:GetService("TweenService"):Create(MinimizeButton, TweenInfo.new(0.2), {
-        BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-    }):Play()
-end)
-
--- Add hover effects for close button
-CloseButton.MouseEnter:Connect(function()
-    game:GetService("TweenService"):Create(CloseButton, TweenInfo.new(0.2), {
-        TextColor3 = Color3.fromRGB(255, 100, 100)
-    }):Play()
-end)
-
-CloseButton.MouseLeave:Connect(function()
-    game:GetService("TweenService"):Create(CloseButton, TweenInfo.new(0.2), {
-        TextColor3 = Color3.fromRGB(255, 255, 255)
-    }):Play()
-end)
-
--- Add shadow
-local Shadow = Instance.new("ImageLabel")
-Shadow.Name = "Shadow"
-Shadow.AnchorPoint = Vector2.new(0.5, 0.5)
-Shadow.BackgroundTransparency = 1
-Shadow.Position = UDim2.new(0.5, 0, 0.5, 0)
-Shadow.Size = UDim2.new(1, 10, 1, 10)
-Shadow.ImageColor3 = Color3.fromRGB(0, 0, 0)
-Shadow.ImageTransparency = 0.5
-Shadow.Image = "rbxassetid://7912134082"
-Shadow.Parent = MinimizeButton
-Shadow.ZIndex = MinimizeButton.ZIndex - 1
-local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/Main.lua"))()
--- Create window with proper callbacks
-local Window = Fluent:CreateWindow({
-    Title = "Easter Event",
+local Window = Library:Window{
+    Title = "AWS Rewind Event",
     SubTitle = "By Duckie",
     TabWidth = 160,
-    Size = UDim2.fromOffset(580, 460),
+    Size =  UDim2.fromOffset(580, 460),
+    Resize = false, 
     Acrylic = true,
-    Theme = "Dark",
-    MinimizeKey = Enum.KeyCode.LeftControl,
-    OnDestroy = function()
-        local fadeOut = game:GetService("TweenService"):Create(MinimizeGui, TweenInfo.new(0.5), {
-            Transparency = 1
-        })
-        fadeOut:Play()
-        fadeOut.Completed:Connect(function()
-            MinimizeGui:Destroy()
-        end)
-    end
-})
-
-local Tabs = {
-    Event = Window:AddTab({ Title = "Easter Event", Icon = "carrot" })
+    Theme = "Vynixu",
+    MinimizeKey = Enum.KeyCode.LeftShift
+}
+ Tabs = {
+    Event = Window:AddTab({ Title = "Main", Icon = "clock" }),
+    Wrestlers = Window:AddTab({ Title = "Wrestlers", Icon = "biceps-flexed" }),
+    Claim = Window:AddTab({ Title = "Quest", Icon = "gift" })
 }
 
--- Initialize state
-local isMinimized = false
-Window:Minimize(false)
 
--- Regular minimize/maximize functionality
-MinimizeButton.MouseButton1Click:Connect(function()
-    isMinimized = not isMinimized
-    Window:Minimize(isMinimized)
 
-    local textTween = game:GetService("TweenService"):Create(MinimizeButton, TweenInfo.new(0.2), {
-        TextTransparency = 1
-    })
-    
-    textTween:Play()
-    textTween.Completed:Connect(function()
-        MinimizeButton.Text = isMinimized and "Open" or "Close"
-        game:GetService("TweenService"):Create(MinimizeButton, TweenInfo.new(0.2), {
-            TextTransparency = 0
-        }):Play()
-    end)
-end)
-
--- Close button functionality 
-CloseButton.MouseButton1Click:Connect(function()
-    MinimizeGui:Destroy()
-    Window:Destroy()
-end)
 
 
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
     -- Check if the player has the 'ZoneEasterEvent' attribute
-    if player:GetAttribute("ZoneEasterEvent") then
-        return "EasterEvent"
+    if player:GetAttribute("ZoneRewindEvent") then
+        return "RewindEvent"
     end
 
     -- Return nil if the attribute isn't found
     return nil
 end
 
-
-    
-
-
-local function GetBestPrisonEquipment()
+local function GetBestPrisonBag()
     local player = game.Players.LocalPlayer
     local currentZone = GetCurrentZone()
-    local zoneAttributes = {
-        EasterEvent = "TotalEasterStrength2025",
-    }
     
-    local prisonBicep = player:GetAttribute(zoneAttributes[currentZone]) or 0
-    local dumbbellData = require(game:GetService("ReplicatedStorage").Data.Dumbells)
-    local defaultDumbbells = {
-        EasterEvent = "EasterEvent1"
-    }
+    local rewindKnuckle = player:GetAttribute("TotalRewindKnucklesV2") or 0
+    local punchBagData = require(game:GetService("ReplicatedStorage").Data.PunchBags)
     
-    local bestDumbell = defaultDumbbells[currentZone]
+    if player:GetAttribute("VIP") == true then
+        return "VIP"
+    end
+    
+    local bestTier = "Tier1"  
     local highestRequired = 0
     
-    if dumbbellData and dumbbellData[currentZone] then
-        for name, data in pairs(dumbbellData[currentZone]) do
+    if punchBagData and punchBagData[currentZone] then
+        for tier, data in pairs(punchBagData[currentZone]) do
             if data.StrengthRequired and 
-               prisonBicep >= data.StrengthRequired and 
+               rewindKnuckle >= data.StrengthRequired and 
                data.StrengthRequired > highestRequired then
-                bestDumbell = name
+                bestTier = tier
+                highestRequired = data.StrengthRequired
+            end
+        end
+    end
+    
+    return bestTier
+end
+
+local function GetBestPrisonEquipment(equipmentType)
+    local player = game.Players.LocalPlayer
+    local currentZone = GetCurrentZone()
+    
+    -- Determine which attribute and data to use based on equipment type
+    local attributeName, dataModule, defaultEquipment
+    
+    if equipmentType == "Dumbells" then
+        attributeName = "TotalRewindBicepV2"
+        dataModule = "Dumbells"
+        defaultEquipment = "Rewind1"
+    elseif equipmentType == "Grips" then
+        attributeName = "TotalRewindGripV2"
+        dataModule = "Grips"
+        defaultEquipment = "RewindEvent1"
+    else
+        -- Default to Dumbells if unknown type
+        attributeName = "TotalRewindStrengthV2"
+        dataModule = "Dumbells"
+        defaultEquipment = "RewindEvent1"
+    end
+    
+    local statValue = player:GetAttribute(attributeName) or 0
+    local equipmentData = require(game:GetService("ReplicatedStorage").Data[dataModule])
+    
+    local bestEquipment = defaultEquipment
+    local highestRequired = 0
+    
+    if equipmentData and equipmentData[currentZone] then
+        for name, data in pairs(equipmentData[currentZone]) do
+            if data.StrengthRequired and 
+               statValue >= data.StrengthRequired and 
+               data.StrengthRequired > highestRequired then
+                bestEquipment = name
                 highestRequired = data.StrengthRequired
             end
         end
     end
 
-    return bestDumbell
+    return bestEquipment
 end
+
+-- Make sure Tabs is defined before using it
+local Tabs = Tabs or {}  -- Use existing Tabs or create a new table if it doesn't exist
 
 -- Add Training Section
 local TrainSection = Tabs.Event:AddSection("Auto Train")
 
 local TrainingDropdown = Tabs.Event:AddDropdown("TrainingSelect", {
     Title = "Select Training Type",
-    Values = {"Dumbells"}, 
+    Values = {"Dumbells", "PunchBags", "Grips"}, 
     Multi = false,
     Default = "Dumbells"
 })
@@ -259,48 +158,101 @@ local AutoTrainToggle = Tabs.Event:AddToggle("AutoTrain", {
 
 AutoTrainToggle:OnChanged(function()
     if AutoTrainToggle.Value then
-        -- Function to equip Dumbells
-        local function equipDumbells()
+        spawn(function()
             local currentZone = GetCurrentZone()
-            local equipment = GetBestPrisonEquipment()
-            local args = {
-                [1] = currentZone,
-                [2] = "Dumbells", 
-                [3] = equipment
-            }
-            game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
-        end
+            
+            if TrainingDropdown.Value == "Dumbells" then
+                -- Function to equip Dumbells
+                local function equipDumbells()
+                    local equipment = GetBestPrisonEquipment("Dumbells")
+                    local args = {
+                        [1] = currentZone,
+                        [2] = "Dumbells", 
+                        [3] = equipment
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+                end
 
-        -- Equip immediately
-        equipDumbells()
-
-        -- Click loop (every 0.2 seconds)
-        task.spawn(function()
-            while AutoTrainToggle.Value do
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                task.wait(0.2)
-            end
-        end)
-
-        -- Re-equip loop (every 5 seconds)
-        task.spawn(function()
-            while AutoTrainToggle.Value do
-                task.wait(5)
+                -- Equip immediately
                 equipDumbells()
+
+                -- Click loop (every 0.2 seconds)
+                spawn(function()
+                    while AutoTrainToggle.Value do
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
+                        wait(0.2)
+                    end
+                end)
+
+                -- Re-equip loop (every 5 seconds)
+                while AutoTrainToggle.Value do
+                    wait(5) -- Wait 5 seconds before re-equipping
+                    if AutoTrainToggle.Value then
+                        equipDumbells()
+                    end
+                end
+                
+            elseif TrainingDropdown.Value == "Grips" then
+                -- Function to equip Grips
+                local function equipGrips()
+                    local equipment = GetBestPrisonEquipment("Grips")
+                    local args = {
+                        [1] = currentZone,
+                        [2] = "Grips", 
+                        [3] = equipment
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onGuiEquipRequest:FireServer(unpack(args))
+                end
+
+                -- Equip immediately
+                equipGrips()
+
+                -- Click loop (every 0.2 seconds)
+                spawn(function()
+                    while AutoTrainToggle.Value do
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
+                        wait(0.2)
+                    end
+                end)
+
+                -- Re-equip loop (every 5 seconds)
+                while AutoTrainToggle.Value do
+                    wait(5) -- Wait 5 seconds before re-equipping
+                    if AutoTrainToggle.Value then
+                        equipGrips()
+                    end
+                end
+
+            else -- PunchBags
+                spawn(function() 
+                    while AutoTrainToggle.Value do
+                        local tier = GetBestPrisonBag()
+                        local bag = workspace.Zones[currentZone].Interactables.Training.PunchBags[tier]
+                        
+                        if bag then
+                            local bagCFrame = bag:GetPivot()
+                            game.Players.LocalPlayer.Character:PivotTo(bagCFrame * CFrame.new(0, 0, -5))
+                            
+                            local args = {
+                                [1] = currentZone,
+                                [2] = tier,
+                                [3] = game.Players.LocalPlayer:GetAttribute("VIP") == true
+                            }
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
+                        end
+                        wait(0.25)
+                    end
+                end)
             end
         end)
     end
 end)
 
-
-
-
-
 -- Auto Fight Section
 local FightSection = Tabs.Event:AddSection("Auto Fight")
 
 local npcLocations = {
-    EasterEvent = workspace.GameObjects.ArmWrestling.EasterEvent.NPC,
+    RewindEvent = workspace.GameObjects.ArmWrestling.RewindEvent.NPC,
 }
 
 local modelNames = {}
@@ -435,91 +387,51 @@ AutoHatchToggle:OnChanged(function()
 end)
 
 
-local AutoUpgradeSection = Tabs.Event:AddSection("Auto Upgrade")
 
--- Power Multiplier Toggle
-local PowerMultiplierToggle = AutoUpgradeSection:AddToggle("PowerMultiplier", {
-    Title = "Easter Strength Multiplier",
-    Description = "Auto upgrade Easter Strength Multiplier",
+
+
+local MerchantSection = Tabs.Event:AddSection("Rewind Shop")
+
+local BlackMarketDropdown = Tabs.Event:AddDropdown("BlackMarketDropdown", {
+    Title = "Select Shop Slot(s)",
+    Values = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10},
+    Multi = true,
+    Default = {}
+})
+
+local AutoBuyToggle = Tabs.Event:AddToggle("AutoBuyToggle", {
+    Title = "Auto Buy (Selected Slots)",
     Default = false
 })
 
-PowerMultiplierToggle:OnChanged(function()
-    if PowerMultiplierToggle.Value then
+AutoBuyToggle:OnChanged(function()
+    if AutoBuyToggle.Value then
         spawn(function()
-            while PowerMultiplierToggle.Value do
-                -- Buy 3 times with 1 second delay
+            while true do
+                if not AutoBuyToggle.Value then break end
+                -- Buy 3 times
                 for i = 1, 3 do
-                    local args = {
-                        [1] = "Easter Strength Multiplier"
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.HeroUpgradeService.RF.BuyUpgrade:InvokeServer(unpack(args))
-                    wait(1)
+                    for number, isSelected in pairs(BlackMarketDropdown.Value) do
+                        if isSelected then
+                            local args = {
+                                [1] = "RewindShop",
+                                [2] = number
+                            }
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(unpack(args))
+                            wait(1)
+                        end
+                    end
                 end
-                
-                -- Wait 10 seconds before repeating
-                wait(30)
-            end
-        end)
-    end
-end)
-
--- Knuckles Multiplier Toggle
-local KnucklesMultiplierToggle = AutoUpgradeSection:AddToggle("KnucklesMultiplier", {
-    Title = "Easter Egg Multiplier",
-    Description = "Auto upgrade Easter Egg Multiplier",
-    Default = false
-})
-
-KnucklesMultiplierToggle:OnChanged(function()
-    if KnucklesMultiplierToggle.Value then
-        spawn(function()
-            while KnucklesMultiplierToggle.Value do
-                -- Buy 3 times with 1 second delay
-                for i = 1, 3 do
-                    local args = {
-                        [1] = "Easter Egg Multiplier"
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.HeroUpgradeService.RF.BuyUpgrade:InvokeServer(unpack(args))
-                    wait(1)
-                end
-                
-                -- Wait 10 seconds before repeating
-                wait(30)
-            end
-        end)
-    end
-end)
-
--- Coins Multiplier Toggle
-local CoinsMultiplierToggle = AutoUpgradeSection:AddToggle("CoinsMultiplier", {
-    Title = "Luck Multiplier",
-    Description = "Auto upgrade Luck Multiplier",
-    Default = false
-})
-
-CoinsMultiplierToggle:OnChanged(function()
-    if CoinsMultiplierToggle.Value then
-        spawn(function()
-            while CoinsMultiplierToggle.Value do
-                -- Buy 3 times with 1 second delay
-                for i = 1, 3 do
-                    local args = {
-                        [1] = "Luck Multiplier"
-                    }
-                    game:GetService("ReplicatedStorage").Packages.Knit.Services.HeroUpgradeService.RF.BuyUpgrade:InvokeServer(unpack(args))
-                    wait(1)
-                end
-                
-                -- Wait 10 seconds before repeating
-                wait(30)
+                wait(30) -- Wait 30 seconds before next cycle
             end
         end)
     end
 end)
 
 
-local MerchantSection = Tabs.Event:AddSection("Merchant")
+
+
+local MerchantSection = Tabs.Event:AddSection("Hidden Merchant")
 
 local BlackMarketDropdown = Tabs.Event:AddDropdown("BlackMarketDropdown", {
     Title = "Select Merchant Slot(s)",
@@ -543,7 +455,7 @@ AutoBuyToggle:OnChanged(function()
                     for number, isSelected in pairs(BlackMarketDropdown.Value) do
                         if isSelected then
                             local args = {
-                                [1] = "Bunnies Merchant",
+                                [1] = "Hidden Merchant",
                                 [2] = number
                             }
                             game:GetService("ReplicatedStorage").Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(unpack(args))
@@ -557,3 +469,251 @@ AutoBuyToggle:OnChanged(function()
     end
 end)
 
+
+
+
+-- WRESTLERS TAB IMPLEMENTATION
+
+-- Section 1: Hire Wrestlers
+local HireWrestlersSection = Tabs.Wrestlers:AddSection("Hire Wrestlers")
+
+-- Dropdown for Wrestlers to Buy (1-6)
+local WrestlerBuyDropdown = HireWrestlersSection:AddDropdown("WrestlerBuyDropdown", {
+    Title = "Wrestlers to Buy",
+    Values = {1, 2, 3, 4, 5, 6},
+    Multi = true,
+    Default = {1}
+})
+
+-- Toggle for Auto Buy Wrestler
+local BuyWrestlerToggle = HireWrestlersSection:AddToggle("BuyWrestlerToggle", {
+    Title = "Auto Buy Wrestlers",
+    Description = "Auto buys the selected wrestlers",
+    Default = false
+})
+
+BuyWrestlerToggle:OnChanged(function()
+    if BuyWrestlerToggle.Value then
+        spawn(function()
+            while true do
+                if not BuyWrestlerToggle.Value then break end
+                
+                -- Loop through all selected wrestlers
+                for wrestlerNum, isSelected in pairs(WrestlerBuyDropdown.Value) do
+                    if isSelected then
+                        local args = {
+                            [1] = "Rewind" .. wrestlerNum
+                        }
+                        
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.PersonalWrestleService.RF.BuyPersonalWrestler:InvokeServer(unpack(args))
+                        wait(1) -- Small wait between purchases to prevent throttling
+                    end
+                end
+                
+                wait(30) -- Wait 30 seconds before next purchase cycle
+            end
+        end)
+    end
+end)
+
+-- Section 2: Upgrade Wrestlers
+local UpgradeWrestlersSection = Tabs.Wrestlers:AddSection("Upgrade Wrestlers")
+
+-- Dropdown for Wrestlers to Upgrade (1-6)
+local WrestlerUpgradeDropdown = UpgradeWrestlersSection:AddDropdown("WrestlerUpgradeDropdown", {
+    Title = "Select Wrestlers for Upgrades",
+    Values = {1, 2, 3, 4, 5, 6},
+    Multi = true,
+    Default = {}
+})
+
+-- Dropdown for Upgrade Types
+local UpgradeTypeDropdown = UpgradeWrestlersSection:AddDropdown("UpgradeTypeDropdown", {
+    Title = "Upgrade Types",
+    Values = {"Item Luck", "Wrestling Speed", "Cash Upgrade", "Item Storage"},
+    Multi = true,
+    Default = {}
+})
+
+-- Toggle for Auto Upgrade Wrestlers
+local UpgradeWrestlerToggle = UpgradeWrestlersSection:AddToggle("UpgradeWrestlerToggle", {
+    Title = "Auto Upgrade Wrestlers",
+    Description = "Automatically upgrades selected wrestlers with selected upgrades",
+    Default = false
+})
+
+UpgradeWrestlerToggle:OnChanged(function()
+    if UpgradeWrestlerToggle.Value then
+        spawn(function()
+            while true do
+                if not UpgradeWrestlerToggle.Value then break end
+                
+                -- Buy upgrades 5 times every 30 seconds
+                for cycle = 1, 5 do
+                    -- Loop through selected wrestlers
+                    for wrestlerNum, isSelected in pairs(WrestlerUpgradeDropdown.Value) do
+                        if isSelected then
+                            local wrestlerId = "Rewind" .. wrestlerNum
+                            
+                            -- Loop through selected upgrade types
+                            for upgradeType, isTypeSelected in pairs(UpgradeTypeDropdown.Value) do
+                                if isTypeSelected then
+                                    local args = {
+                                        [1] = wrestlerId,
+                                        [2] = upgradeType
+                                    }
+                                    
+                                    game:GetService("ReplicatedStorage").Packages.Knit.Services.PersonalWrestleService.RF.Upgrade:InvokeServer(unpack(args))
+                                    wait(0.5) -- Small wait between upgrades
+                                end
+                            end
+                        end
+                    end
+                    
+                    wait(1) -- Wait between cycles
+                end
+                
+                wait(30) -- Wait 30 seconds before next batch of upgrades
+            end
+        end)
+    end
+end)
+
+-- Section 3: Claim Wrestler Loot
+local ClaimWrestlerSection = Tabs.Wrestlers:AddSection("Claim Wrestler Loot")
+
+-- Dropdown for Wrestlers to Claim (1-5)
+local WrestlerClaimDropdown = ClaimWrestlerSection:AddDropdown("WrestlerClaimDropdown", {
+    Title = "Select Wrestlers to Claim",
+    Values = {1, 2, 3, 4, 5, 6},
+    Multi = true,
+    Default = {}
+})
+
+-- Toggle for Auto Claim Wrestler
+local ClaimWrestlerToggle = ClaimWrestlerSection:AddToggle("ClaimWrestlerToggle", {
+    Title = "Auto Claim Rewards",
+    Description = "Automatically claims rewards from selected wrestlers",
+    Default = false
+})
+
+ClaimWrestlerToggle:OnChanged(function()
+    if ClaimWrestlerToggle.Value then
+        spawn(function()
+            while true do
+                if not ClaimWrestlerToggle.Value then break end
+                
+                -- Loop through all selected wrestlers
+                for wrestlerNum, isSelected in pairs(WrestlerClaimDropdown.Value) do
+                    if isSelected then
+                        local args = {
+                            [1] = "Rewind" .. wrestlerNum
+                        }
+                        
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.PersonalWrestleService.RF.Claim:InvokeServer(unpack(args))
+                        wait(0.5) -- Small wait between claims to prevent throttling
+                    end
+                end
+                
+                wait(5) -- Wait 5 seconds before next claim cycle
+            end
+        end)
+    end
+end)
+
+
+-- Add a section for Rewind Event Quest Claims in the Claim tab
+local RewindQuestSection = Tabs.Claim:AddSection("Rewind Event Quests")
+
+-- Create button for claiming all quest items
+local ClaimAllRewindQuestsButton = RewindQuestSection:Button({
+    Title = "Complete Rewind Event Quests",
+    Description = "Automatically completes Bacon Hair and Lost Traveler quests",
+    Callback = function()
+        -- Get required services
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local Knit = require(ReplicatedStorage.Packages.Knit)
+        
+        -- STEP 1: Try to pick up Bacon Hair if available using proximity prompt
+        pcall(function()
+            print("Attempting to pick up BaconHair...")
+            local baconHair = workspace.Zones.RewindEvent.Interactables.Quest.BaconHair
+            if baconHair and baconHair:FindFirstChild("Part") and baconHair.Part:FindFirstChild("ProximityPrompt") then
+                fireproximityprompt(baconHair.Part.ProximityPrompt)
+                print("Successfully fired proximity prompt for BaconHair")
+                wait(1)
+            else
+                print("BaconHair not found or already collected")
+            end
+        end)
+        
+        -- STEP 2: Try to deliver Bacon Hair if it was picked up
+        pcall(function()
+            print("Attempting to deliver BaconHair...")
+            local baconHairDelivery = workspace.Zones.RewindEvent.Interactables.Quest.BaconPerson
+            if baconHairDelivery and baconHairDelivery:FindFirstChild("HumanoidRootPart") and 
+               baconHairDelivery.HumanoidRootPart:FindFirstChild("ProximityPrompt") then
+                fireproximityprompt(baconHairDelivery.HumanoidRootPart.ProximityPrompt)
+                print("Successfully fired proximity prompt for BaconHair delivery")
+                wait(1)
+            else
+                print("BaconPerson not found or delivery not needed")
+            end
+        end)
+        
+        -- STEP 3: Lost Traveler items - find, pick up, and deliver one by one using proximity prompts
+        pcall(function()
+            local lostTravelerQuestItems = workspace.Zones.RewindEvent.Interactables.Quest.LostTraveler.Items.QuestItems:GetChildren()
+            local lostTravelerNPC = workspace.Zones.RewindEvent.Interactables.Quest.LostTraveler
+            
+            -- Check if NPC exists for delivery
+            local lostTravelerPrompt
+            if lostTravelerNPC and lostTravelerNPC:FindFirstChild("HumanoidRootPart") and 
+               lostTravelerNPC.HumanoidRootPart:FindFirstChild("ProximityPrompt") then
+                lostTravelerPrompt = lostTravelerNPC.HumanoidRootPart.ProximityPrompt
+            else
+                print("Lost Traveler NPC not found for delivery")
+                return
+            end
+            
+            if #lostTravelerQuestItems > 0 then
+                print("Found " .. #lostTravelerQuestItems .. " Lost Traveler items to pick up")
+                
+                for _, item in pairs(lostTravelerQuestItems) do
+                    -- Find the proximity prompt in the item
+                    local itemPrompt
+                    if item:FindFirstChild("Part") and item.Part:FindFirstChild("ProximityPrompt") then
+                        itemPrompt = item.Part.ProximityPrompt
+                    else
+                        for _, descendant in pairs(item:GetDescendants()) do
+                            if descendant:IsA("ProximityPrompt") then
+                                itemPrompt = descendant
+                                break
+                            end
+                        end
+                    end
+                    
+                    if itemPrompt then
+                        -- Pick up the item
+                        print("Picking up: " .. item.Name)
+                        fireproximityprompt(itemPrompt)
+                        wait(1)
+                        
+                        -- Deliver the item immediately
+                        print("Delivering: " .. item.Name)
+                        fireproximityprompt(lostTravelerPrompt)
+                        wait(1)
+                    else
+                        print("Could not find proximity prompt for: " .. item.Name)
+                    end
+                end
+                
+                print("All Lost Traveler items processed")
+            else
+                print("No Lost Traveler items found to pick up")
+            end
+        end)
+        
+        print("Quest completion attempts finished!")
+    end
+})
