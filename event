@@ -621,7 +621,6 @@ ClaimWrestlerToggle:OnChanged(function()
     end
 end)
 
-
 -- Add a section for Rewind Event Quest Claims in the Claim tab
 local RewindQuestSection = Tabs.Claim:AddSection("Rewind Event Quests")
 
@@ -633,12 +632,18 @@ local ClaimAllRewindQuestsButton = RewindQuestSection:Button({
         -- Get required services
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local Knit = require(ReplicatedStorage.Packages.Knit)
+        local player = game.Players.LocalPlayer
+        local character = player.Character or player.CharacterAdded:Wait()
+        local humanoidRootPart = character:WaitForChild("HumanoidRootPart")
         
         -- STEP 1: Try to pick up Bacon Hair if available using proximity prompt
         pcall(function()
             print("Attempting to pick up BaconHair...")
             local baconHair = workspace.Zones.RewindEvent.Interactables.Quest.BaconHair
             if baconHair and baconHair:FindFirstChild("Part") and baconHair.Part:FindFirstChild("ProximityPrompt") then
+                -- Teleport to the item first
+                humanoidRootPart.CFrame = baconHair.Part.CFrame
+                wait(0.5)
                 fireproximityprompt(baconHair.Part.ProximityPrompt)
                 print("Successfully fired proximity prompt for BaconHair")
                 wait(1)
@@ -653,6 +658,9 @@ local ClaimAllRewindQuestsButton = RewindQuestSection:Button({
             local baconHairDelivery = workspace.Zones.RewindEvent.Interactables.Quest.BaconPerson
             if baconHairDelivery and baconHairDelivery:FindFirstChild("HumanoidRootPart") and 
                baconHairDelivery.HumanoidRootPart:FindFirstChild("ProximityPrompt") then
+                -- Teleport to the delivery point first
+                humanoidRootPart.CFrame = baconHairDelivery.HumanoidRootPart.CFrame
+                wait(0.5)
                 fireproximityprompt(baconHairDelivery.HumanoidRootPart.ProximityPrompt)
                 print("Successfully fired proximity prompt for BaconHair delivery")
                 wait(1)
@@ -661,20 +669,19 @@ local ClaimAllRewindQuestsButton = RewindQuestSection:Button({
             end
         end)
         
-        -- STEP 3: Lost Traveler items - find, pick up, and deliver one by one using proximity prompts
+        -- STEP 3: Lost Traveler items - find, pick up, and deliver one by one using proximity prompts and teleporting
         pcall(function()
             local lostTravelerQuestItems = workspace.Zones.RewindEvent.Interactables.Quest.LostTraveler.Items.QuestItems:GetChildren()
-            local lostTravelerNPC = workspace.Zones.RewindEvent.Interactables.Quest.LostTraveler
+            local lostTravelerHitbox = workspace.Zones.RewindEvent.Interactables.Quest.LostTraveler.Touch.Hitbox
             
-            -- Check if NPC exists for delivery
-            local lostTravelerPrompt
-            if lostTravelerNPC and lostTravelerNPC:FindFirstChild("HumanoidRootPart") and 
-               lostTravelerNPC.HumanoidRootPart:FindFirstChild("ProximityPrompt") then
-                lostTravelerPrompt = lostTravelerNPC.HumanoidRootPart.ProximityPrompt
-            else
-                print("Lost Traveler NPC not found for delivery")
+            -- Check if hitbox exists for delivery
+            if not lostTravelerHitbox then
+                print("Lost Traveler Hitbox not found for delivery")
                 return
             end
+            
+            -- Calculate position 3 studs above the hitbox
+            local deliveryPosition = lostTravelerHitbox.CFrame + Vector3.new(0, 3, 0)
             
             if #lostTravelerQuestItems > 0 then
                 print("Found " .. #lostTravelerQuestItems .. " Lost Traveler items to pick up")
@@ -682,26 +689,32 @@ local ClaimAllRewindQuestsButton = RewindQuestSection:Button({
                 for _, item in pairs(lostTravelerQuestItems) do
                     -- Find the proximity prompt in the item
                     local itemPrompt
+                    local itemPart
+                    
                     if item:FindFirstChild("Part") and item.Part:FindFirstChild("ProximityPrompt") then
                         itemPrompt = item.Part.ProximityPrompt
+                        itemPart = item.Part
                     else
                         for _, descendant in pairs(item:GetDescendants()) do
                             if descendant:IsA("ProximityPrompt") then
                                 itemPrompt = descendant
+                                itemPart = descendant.Parent
                                 break
                             end
                         end
                     end
                     
-                    if itemPrompt then
-                        -- Pick up the item
-                        print("Picking up: " .. item.Name)
+                    if itemPrompt and itemPart then
+                        -- Teleport to the item and pick it up
+                        print("Teleporting to and picking up: " .. item.Name)
+                        humanoidRootPart.CFrame = itemPart.CFrame
+                        wait(0.5)
                         fireproximityprompt(itemPrompt)
                         wait(1)
                         
-                        -- Deliver the item immediately
-                        print("Delivering: " .. item.Name)
-                        fireproximityprompt(lostTravelerPrompt)
+                        -- Teleport 3 studs above the Lost Traveler hitbox
+                        print("Teleporting above hitbox to deliver: " .. item.Name)
+                        humanoidRootPart.CFrame = deliveryPosition
                         wait(1)
                     else
                         print("Could not find proximity prompt for: " .. item.Name)
