@@ -264,14 +264,21 @@ AutoTrainToggle:OnChanged(function()
 
             else -- PunchBags
                 spawn(function() 
+                    local lastTeleport = 0
                     while AutoTrainToggle.Value do
                         local tier = GetBestPrisonBag()
                         local bag = workspace.Zones[currentZone].Interactables.Training.PunchBags[tier]
                         
                         if bag then
-                            local bagCFrame = bag:GetPivot()
-                            game.Players.LocalPlayer.Character:PivotTo(bagCFrame * CFrame.new(0, 0, -5))
+                            -- Only teleport every 5 seconds
+                            local currentTime = tick()
+                            if currentTime - lastTeleport >= 5 then
+                                local bagCFrame = bag:GetPivot()
+                                game.Players.LocalPlayer.Character:PivotTo(bagCFrame * CFrame.new(0, 0, -5))
+                                lastTeleport = currentTime
+                            end
                             
+                            -- Use the punch bag service every 0.25 seconds
                             local args = {
                                 [1] = currentZone,
                                 [2] = tier,
