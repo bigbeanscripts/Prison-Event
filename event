@@ -1,4 +1,4 @@
--- Easter Event
+-- Rewind Event
 
 -- Function to get all valid egg names in alphabetical order, excluding "Egg Rewind"
 local function getEggNames()
@@ -54,6 +54,45 @@ local Window = Library:Window{
 
 
 
+
+local PlaytimeSection = Tabs.Event:AddSection("Playtime Pass")
+
+local AutoPlaytimeToggle = PlaytimeSection:AddToggle("AutoPlaytime", {
+    Title = "Auto Claim Playtime Pass",
+    Default = false
+})
+
+AutoPlaytimeToggle:OnChanged(function()
+    if AutoPlaytimeToggle.Value then
+        -- Claim rewards immediately when enabled
+        for i = 1, 12 do
+            local args = {
+                [1] = "Free",
+                [2] = i
+            }
+            game:GetService("ReplicatedStorage").Packages.Knit.Services.EventPassService.RF.ClaimReward:InvokeServer(unpack(args))
+        end
+        
+        -- Start reset/claim loop
+        spawn(function()
+            while AutoPlaytimeToggle.Value do
+                wait(60) -- Wait before reset
+                
+                -- Reset pass
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.EventPassService.RF.Reset:InvokeServer()
+                
+                -- Claim all rewards after reset
+                for i = 1, 12 do
+                    local args = {
+                        [1] = "Free",
+                        [2] = i
+                    }
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.EventPassService.RF.ClaimReward:InvokeServer(unpack(args))
+                end
+            end
+        end)
+    end
+end)
 
 
 local function GetCurrentZone()
@@ -470,9 +509,60 @@ AutoBuyToggle:OnChanged(function()
 end)
 
 
+local WheelSection = Tabs.Event:AddSection("Rewind Wheel")
+
+local GhostFortuneSpinDropdown = Tabs.Event:AddDropdown("GhostFortuneSpinAmount", {
+    Title = "Spin Amount",
+    Description = "Select Wheel Spin Amount",
+    Values = {"1x", "3x", "10x"},
+    Multi = false,
+    Default = "1x"
+})
+
+local AutoGhostFortuneToggle = Tabs.Event:AddToggle("AutoGhostFortuneSpin", {
+    Title = "Auto Bulk Rewind Wheel",
+    Default = false
+})
+
+AutoGhostFortuneToggle:OnChanged(function()
+    if AutoGhostFortuneToggle.Value then
+        spawn(function()
+            while true do
+                if not AutoGhostFortuneToggle.Value then break end
+                
+                local args = {
+                    [1] = "Rewind",
+                    [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
+                
+                wait(1)
+            end
+        end)
+    end
+end)
 
 
--- WRESTLERS TAB IMPLEMENTATION
+-- Add Break Walls Button to Event tab
+local UtilitySection = Tabs.Event:AddSection("Breakable Walls")
+
+local BreakWallsButton = UtilitySection:Button({
+    Title = "Break All Walls",
+    Description = "Removes all punchable walls (resets on rejoin). This allows you to get to areas, without needing the required strength.",
+    Callback = function()
+        local wallContainer = workspace.Zones.RewindEvent.Interactables.PunchableWall
+        
+        -- Check if the wall container exists
+        if wallContainer then
+            local count = #wallContainer:GetChildren()
+            
+            -- Delete all children (walls)
+            for _, wall in pairs(wallContainer:GetChildren()) do
+                wall:Destroy()
+            end
+        end
+    end
+})
 
 -- Section 1: Hire Wrestlers
 local HireWrestlersSection = Tabs.Wrestlers:AddSection("Hire Wrestlers")
