@@ -52,6 +52,7 @@ local Window = Library:Window{
     Wrestlers = Window:AddTab({ Title = "Wrestlers", Icon = "biceps-flexed" }),
     ATMs = Window:AddTab({ Title = "ATMs", Icon = "phosphor-cash-register-light" }),
     Upgrades = Window:AddTab({ Title = "Player Upgrades", Icon = "arrow-up-1-0" }),
+    Towers = Window:AddTab({ Title = "Tower", Icon = "castle" }),
     Claim = Window:AddTab({ Title = "Quest", Icon = "gift" })
 }
 
@@ -917,13 +918,13 @@ AutoClaimATMToggle:OnChanged(function()
     end
 end)
 
-
 -- Section for Player Upgrades
 local UpgradeSection = Tabs.Upgrades:AddSection("Auto Upgrade")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local localPlayer = Players.LocalPlayer
-local PersonalUpgrades = require(game:GetService("ReplicatedStorage").Controllers.Upgrades.PersonalUpgradeController) -- FIXED PATH
+local PersonalUpgrades = require(ReplicatedStorage.Data.Upgrades.PersonalUpgrades)
+
 
 Tabs.Upgrades:Paragraph("Aligned Paragraph", {
     Title = "Note",
@@ -993,7 +994,35 @@ AutoLuckToggle:OnChanged(function()
 end)
 
 
--- Add a section for Rewind Event Quest Claims in the Claim tab
+local TowerSection = Tabs.Towers:AddSection("Towers")
+
+
+-- Prison Cave Buttons
+TowerSection:AddButton({
+    Title = "Use Mafia Tryout Keys (1x)",
+    Description = "Use the Mafia Tryout Keys once.",
+    Callback = function()
+        local args = {
+            [1] = "MafiaTryout",
+            [2] = false
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+TowerSection:AddButton({
+    Title = "Use All Mafia Tryout Keys (250x)",
+    Description = "Use All Mafia Tryout Keys (max 250 at a time).",
+    Callback = function()
+        local args = {
+            [1] = "MafiaTryout",
+            [2] = true
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+
 local RewindQuestSection = Tabs.Claim:AddSection("Rewind Event Quests")
 
 -- Create button for claiming all quest items
