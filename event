@@ -56,6 +56,7 @@ local Tabs = {
     Duck = Window:AddTab({ Title = "Sell", Icon = "phosphor-cash-register-light" }),
     Wheel = Window:AddTab({ Title = "Wheel", Icon = "ferris-wheel" }),
     Shop = Window:AddTab({ Title = "Shop", Icon = "phosphor-shopping-cart-fill" }),
+    RewindEvent = Window:AddTab({ Title = "Rewind Event", Icon = "clock" }),
 }
 
 
@@ -1147,3 +1148,18 @@ AutoBuyToggle:OnChanged(function(enabled)
         end)
     end
 end)
+
+
+
+
+local ScriptsSection = Tabs.RewindEvent:AddSection("Rewind Event Loadstring")
+
+-- Add loadstring button
+ScriptsSection:AddButton({
+    Title = "Load Rewind Event Script",
+    Description = "Opens my Rewind Event Script",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/Mutate-/refs/heads/main/Cosmic"))()
+    end
+})
+
