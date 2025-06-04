@@ -343,13 +343,10 @@ TrainingDropdown:OnChanged(function()
 end)
 
 
-
-
 -- UI section
 local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 
 local modelNames = {}
-local npcLocations = {} -- Store model locations for reference
 local armWrestlingFolder = workspace.GameObjects.ArmWrestling
 
 -- Populate model names for dropdown - DuckEvent only
@@ -364,7 +361,6 @@ local function findModels(folder)
             for _, npc in pairs(npcFolder:GetChildren()) do
                 if npc:IsA("Model") then
                     table.insert(modelNames, npc.Name)
-                    npcLocations[npc.Name] = {folder = "DuckEvent", npc = npc}
                 end
             end
         end
@@ -388,146 +384,24 @@ local modelDropdown = Tabs.AutoFight:AddDropdown("ModelDropdown", {
     Default = modelNames[1] or "",
 })
 
--- Auto Fight logic
+-- Auto Click toggle
+local AutoClickToggle = Tabs.AutoFight:AddToggle("AutoClick", {
+    Title = "Auto Click",
+    Description = "Allows you to win multiple fights, many times a second.",
+    Default = false
+})
+
+-- Auto Fight toggle
 local AutoFightToggle = Tabs.AutoFight:AddToggle("AutoFight", {
     Title = "Auto Fight",
-    Description = "This is the fastest in the game, beating 5x faster then normal. You must turn on the Auto Fight button in the game to abuse this. If this doesn't seem very fast (winning once a second), turn the toggle on and off repeatedly. You should win 2-3 times every second.",
+    Description = "Automatically starts fights with the selected boss (to beat bosses 100x as fast, enable the Auto Click toggle)",
     Default = false
 })
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local EndFightSignal = ReplicatedStorage.Packages.Knit.Services.ArmWrestleService.RE.EndFightSignal
 
--- Load required modules & controllers
-local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
-local Players = game:GetService("Players")
-local LocalPlayer = Players.LocalPlayer
-
-local ArmWrestleController = Knit.GetController("ArmWrestleController")
-local AutoUIController = Knit.GetController("AutoUIController")
-local FightUIController = Knit.GetController("FightUIController")
-local FightArmsController = Knit.GetController("FightArmsController")
-
--- Variables for storing original values to restore when toggle is off
-local originalNPCPower = nil
-local originalNPCCps = nil
-local originalMouseClick = nil
-local originalStartFight = nil
-local originalUpdateFight = nil
-local originalIncrementPower = nil
-
--- Function to modify game controllers when toggle is on
-local function enableCheats()
-    -- Store original values for restoration later
-    if ArmWrestleController then
-        originalNPCPower = ArmWrestleController.NPCPower
-        originalNPCCps = ArmWrestleController.NPCCps
-        originalMouseClick = ArmWrestleController.MouseClick
-        originalStartFight = ArmWrestleController.StartFight
-        originalUpdateFight = ArmWrestleController.UpdateFight
-        originalIncrementPower = ArmWrestleController.IncrementPower
-        
-        -- Apply cheats
-        ArmWrestleController.NPCPower = 0
-        ArmWrestleController.NPCCps = 0
-
-        ArmWrestleController.MouseClick = function(arg1, arg2)
-            pcall(function()
-                originalMouseClick(arg1, arg2)
-                ArmWrestleController.Health = ArmWrestleController.MaxHealth - 0.001
-                if ArmWrestleController.UpdatingPower then
-                    pcall(function() 
-                        if FightUIController then
-                            FightUIController:UpdateUI() 
-                        end
-                    end)
-                    pcall(function() 
-                        if FightArmsController then
-                            FightArmsController:UpdateArms() 
-                        end
-                    end)
-                end
-            end)
-        end
-
-        ArmWrestleController.StartFight = function(self, podium, data, customMatchData)
-            pcall(function()
-                originalStartFight(self, podium, data, customMatchData)
-                ArmWrestleController.IsStarted = true
-                ArmWrestleController.Health = ArmWrestleController.MaxHealth - 0.001
-                local startTime = LocalPlayer:FindFirstChild("PlayerGui")
-                    and LocalPlayer.PlayerGui:FindFirstChild("Fighting")
-                    and LocalPlayer.PlayerGui.Fighting:FindFirstChild("StartTime")
-                if startTime then
-                    startTime.Text = "GO!"
-                    startTime.Visible = false
-                end
-                pcall(function() 
-                    if FightUIController then
-                        FightUIController:UpdateUI() 
-                    end
-                end)
-                pcall(function() 
-                    if FightArmsController then
-                        FightArmsController:UpdateArms() 
-                    end
-                end)
-            end)
-        end
-
-        ArmWrestleController.UpdateFight = function(self)
-            task.spawn(function()
-                while ArmWrestleController.Fighting and ArmWrestleController.IsStarted do
-                    pcall(function()
-                        ArmWrestleController.Health = ArmWrestleController.MaxHealth - 0.001
-                        if FightUIController then
-                            FightUIController:UpdateUI()
-                        end
-                    end)
-                    task.wait(0.01)
-                end
-            end)
-        end
-
-        ArmWrestleController.IncrementPower = function(self, amount)
-            pcall(function()
-                if amount > 0 then
-                    ArmWrestleController.Health = ArmWrestleController.Health + amount
-                    if ArmWrestleController.Health > ArmWrestleController.MaxHealth then
-                        ArmWrestleController.Health = ArmWrestleController.MaxHealth - 0.001
-                    end
-                end
-            end)
-        end
-    end
-    
-    -- Set click speed to extreme
-    if AutoUIController then
-        AutoUIController.ClicksPerSec = 20e10
-    end
-end
-
--- Function to restore original controller methods
-local function disableCheats()
-    if ArmWrestleController then
-        -- Restore original values
-        if originalNPCPower then ArmWrestleController.NPCPower = originalNPCPower end
-        if originalNPCCps then ArmWrestleController.NPCCps = originalNPCCps end
-        if originalMouseClick then ArmWrestleController.MouseClick = originalMouseClick end
-        if originalStartFight then ArmWrestleController.StartFight = originalStartFight end
-        if originalUpdateFight then ArmWrestleController.UpdateFight = originalUpdateFight end
-        if originalIncrementPower then ArmWrestleController.IncrementPower = originalIncrementPower end
-    end
-    
-    -- Restore normal click speed
-    if AutoUIController then
-        AutoUIController.ClicksPerSec = 12 -- Reset to default value
-    end
-end
-
-local critHitLoop = nil
-local CritHit = ReplicatedStorage.Packages.Knit.Services.ArmWrestleService.RF.RequestCritHit
-
+-- Track if the last fight has ended
 local lastFightEnded = true
 
 EndFightSignal.OnClientEvent:Connect(function()
@@ -547,24 +421,46 @@ local function getNPCReference(selectedName)
     return nil
 end
 
+-- Variables to store our loops
+local autoClickThreads = {}
 local autoFightLoop = nil
 
+-- Auto Click toggle handler
+AutoClickToggle:OnChanged(function()
+    if AutoClickToggle.Value then
+        -- Clear existing threads if any
+        for _, thread in pairs(autoClickThreads) do
+            task.cancel(thread)
+        end
+        autoClickThreads = {}
+        
+        -- Start 20 separate clicking threads
+        for i = 1, 20 do
+            local thread = task.spawn(function()
+                while AutoClickToggle.Value do
+                    pcall(function()
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RF.RequestClick:InvokeServer()
+                    end)
+
+                end
+            end)
+            table.insert(autoClickThreads, thread)
+            task.wait(0.5) -- Wait a second before spawning next thread
+        end
+    else
+        -- Cancel all auto click threads
+        for _, thread in pairs(autoClickThreads) do
+            task.cancel(thread)
+        end
+        autoClickThreads = {}
+    end
+end)
+
+-- Auto Fight toggle handler
 AutoFightToggle:OnChanged(function()
     if AutoFightToggle.Value then
-        enableCheats()
-        
-        -- Start crit hit spam
-        critHitLoop = task.spawn(function()
-            while AutoFightToggle.Value do
-                pcall(function()
-                    CritHit:InvokeServer()
-                end)
-                task.wait(0.001)
-            end
-        end)
-        
         -- Start auto fight loop
-        autoFightLoop = spawn(function()
+        autoFightLoop = task.spawn(function()
             while AutoFightToggle.Value do
                 local selectedName = modelDropdown.Value
                 
@@ -585,27 +481,17 @@ AutoFightToggle:OnChanged(function()
                     end
                 end
 
-                task.wait(0.1)
+                task.wait(0.01) -- Try to start fights very rapidly
             end
         end)
     else
-        -- Cancel the crit hit loop
-        if critHitLoop then
-            task.cancel(critHitLoop)
-            critHitLoop = nil
-        end
-        
         -- Cancel the auto fight loop
         if autoFightLoop then
             task.cancel(autoFightLoop)
             autoFightLoop = nil
         end
-        
-        -- Restore original game values
-        disableCheats()
     end
 end)
-
 
 
 -- Eggs Section
@@ -930,6 +816,17 @@ local function sellSelectedDucks()
     end
 end
 
+
+-- Create dropdown for duck selection
+local DuckSelectDropdown = Tabs.Duck:AddDropdown("SellDuckDropdown", {
+    Title = "Sell Duck(s)",
+    Values = populateDuckDropdown(),
+    Multi = true,  -- Allow selecting multiple ducks
+    Searchable = true,
+    Default = {1}  -- Start with no selection
+})
+
+
 -- Add dropdown to select auto-sell timer (moved before the toggle)
 local AutoSellTimerDropdown = Tabs.Duck:AddDropdown("AutoSellTimer", {
     Title = "Auto Sell Frequency",
@@ -938,14 +835,7 @@ local AutoSellTimerDropdown = Tabs.Duck:AddDropdown("AutoSellTimer", {
     Default = "5 seconds"
 })
 
--- Create dropdown for duck selection
-local DuckSelectDropdown = Tabs.Duck:AddDropdown("SellDuckDropdown", {
-    Title = "Sell Duck(s)",
-    Values = populateDuckDropdown(),
-    Multi = true,  -- Allow selecting multiple ducks
-    Searchable = true,
-    Default = {}  -- Start with no selection
-})
+
 
 -- Set the callback for the dropdown
 DuckSelectDropdown:OnChanged(function(value)
