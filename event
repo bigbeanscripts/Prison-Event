@@ -386,15 +386,15 @@ local modelDropdown = Tabs.AutoFight:AddDropdown("ModelDropdown", {
 
 -- Auto Click toggle
 local AutoClickToggle = Tabs.AutoFight:AddToggle("AutoClick", {
-    Title = "Auto Click",
-    Description = "Allows you to win multiple fights, many times a second.",
+    Title = "Auto Click/Crit",
+    Description = "Allows you to win fights over 5x as fast.",
     Default = false
 })
 
 -- Auto Fight toggle
 local AutoFightToggle = Tabs.AutoFight:AddToggle("AutoFight", {
     Title = "Auto Fight",
-    Description = "Automatically starts fights with the selected boss (to beat bosses 100x as fast, enable the Auto Click toggle)",
+    Description = "Automatically starts fights with the selected boss (to beat bosses much faster, enable the Auto Click/Crit toggle).",
     Default = false
 })
 
@@ -421,36 +421,56 @@ local function getNPCReference(selectedName)
     return nil
 end
 
--- Variables to store our loops
+-- Services
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local KnitServices = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services")
+local ArmwrestleServiceRF = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF")
+
+-- Variables
 local autoClickThreads = {}
 local autoFightLoop = nil
+local isDuckyAutoFightEnabled = true
 
 -- Auto Click toggle handler
 AutoClickToggle:OnChanged(function()
     if AutoClickToggle.Value then
-        -- Clear existing threads if any
+        -- Clear any previous threads
         for _, thread in pairs(autoClickThreads) do
-            task.cancel(thread)
+            if typeof(thread) == "thread" then
+                task.cancel(thread)
+            elseif typeof(thread) == "table" then
+                thread.active = false
+            end
         end
         autoClickThreads = {}
-        
-        -- Start 20 separate clicking threads
-        for i = 1, 20 do
-            local thread = task.spawn(function()
-                while AutoClickToggle.Value do
-                    pcall(function()
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RF.RequestClick:InvokeServer()
-                    end)
 
-                end
-            end)
-            table.insert(autoClickThreads, thread)
-            task.wait(0.5) -- Wait a second before spawning next thread
-        end
+        -- Start new click threads
+        task.spawn(function()
+            for i = 1, 150 do
+                local threadData = { active = true }
+                table.insert(autoClickThreads, threadData)
+
+                task.spawn(function()
+                    while threadData.active and AutoClickToggle.Value do
+                        pcall(function()
+                            ArmwrestleServiceRF:WaitForChild("RequestClick"):InvokeServer()
+                            ArmwrestleServiceRF:WaitForChild("RequestCritHit"):InvokeServer()
+                        end)
+                        task.wait() -- minimal delay
+                    end
+                end)
+
+                task.wait() -- delay between spawning threads
+            end
+        end)
     else
-        -- Cancel all auto click threads
+        -- Disable all click threads
         for _, thread in pairs(autoClickThreads) do
-            task.cancel(thread)
+            if typeof(thread) == "thread" then
+                task.cancel(thread)
+            elseif typeof(thread) == "table" then
+                thread.active = false
+            end
         end
         autoClickThreads = {}
     end
@@ -459,33 +479,24 @@ end)
 -- Auto Fight toggle handler
 AutoFightToggle:OnChanged(function()
     if AutoFightToggle.Value then
-        -- Start auto fight loop
+        if autoFightLoop then task.cancel(autoFightLoop) end -- Safety reset
         autoFightLoop = task.spawn(function()
             while AutoFightToggle.Value do
                 local selectedName = modelDropdown.Value
-                
                 if selectedName and lastFightEnded then
                     lastFightEnded = false
-                    
-                    -- Find the NPC model in the DuckEvent folder
+
                     local npcModel = getNPCReference(selectedName)
-                    
                     if npcModel then
-                        local args = {
-                            [1] = npcModel
-                        }
-                        
                         pcall(function()
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.ArmWrestleService.RF.RequestStartFight:InvokeServer(unpack(args))
+                            ArmwrestleServiceRF:WaitForChild("RequestStartFight"):InvokeServer(npcModel)
                         end)
                     end
                 end
-
-                task.wait(0.01) -- Try to start fights very rapidly
+                task.wait(0.01)
             end
         end)
     else
-        -- Cancel the auto fight loop
         if autoFightLoop then
             task.cancel(autoFightLoop)
             autoFightLoop = nil
