@@ -1060,7 +1060,7 @@ ScriptsSection:AddButton({
     Title = "Load Rewind Event Script",
     Description = "Opens my Rewind Event Script",
     Callback = function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/Mutate-/refs/heads/main/Cosmic"))()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/Prison-Event/refs/heads/main/event1"))()
     end
 })
 
