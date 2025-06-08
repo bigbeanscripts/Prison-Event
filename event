@@ -1,35 +1,48 @@
--- Function to get all DuckEvent egg names in alphabetical order
 local function getEggNames()
     local eggNames = {}
-    
+    local foundEggs = {}
+
+    -- Helper to add egg if not already added
+    local function addEgg(name)
+        if not foundEggs[name] then
+            table.insert(eggNames, name)
+            foundEggs[name] = true
+        end
+    end
+
     -- Direct path to Duck Event eggs
     local duckEventEggs = workspace:FindFirstChild("Zones") and
                          workspace.Zones:FindFirstChild("DuckEvent") and
                          workspace.Zones.DuckEvent:FindFirstChild("Interactables") and
                          workspace.Zones.DuckEvent.Interactables:FindFirstChild("Eggs")
-    
+
     if duckEventEggs then
         for _, egg in pairs(duckEventEggs:GetChildren()) do
             if egg.Name ~= "Rewind" then
-                table.insert(eggNames, egg.Name)
+                addEgg(egg.Name)
             end
         end
-    else
-        -- Fallback: Try to find eggs through egg data with "Duck" in the name
+    end
+
+    -- Add JesterDucky and VillainDucky explicitly
+    addEgg("JesterDucky")
+    addEgg("VillainDucky")
+
+    -- If no eggs found so far, fallback to EggData check
+    if #eggNames == 0 then
         local eggData = require(game:GetService("ReplicatedStorage").Data.EggData)
         for eggName, _ in pairs(eggData) do
             if eggName:match("Duck") or eggName:match("Ducky") then
-                table.insert(eggNames, eggName)
+                addEgg(eggName)
             end
         end
     end
 
     if #eggNames == 0 then
-        -- If no eggs found, add a placeholder
         table.insert(eggNames, "No Duck Eggs Found")
     end
 
-    table.sort(eggNames) -- Sort alphabetically
+    table.sort(eggNames)
     return eggNames
 end
 
@@ -55,7 +68,9 @@ local Tabs = {
     Eggs = Window:AddTab({ Title = "Eggs", Icon = "egg" }),
     Duck = Window:AddTab({ Title = "Sell", Icon = "phosphor-cash-register-light" }),
     Wheel = Window:AddTab({ Title = "Wheel", Icon = "ferris-wheel" }),
+    Tower = Window:AddTab({ Title = "Tower", Icon = "castle" }),
     Shop = Window:AddTab({ Title = "Shop", Icon = "phosphor-shopping-cart-fill" }),
+    Fish = Window:AddTab({ Title = "Fish", Icon = "phosphor-fish" }),
     RewindEvent = Window:AddTab({ Title = "Rewind Event", Icon = "clock" }),
 }
 
@@ -66,10 +81,10 @@ local Tabs = {
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
-    if player:GetAttribute("ZoneDuckEvent") then
+    if player:GetAttribute("ZoneEvilDuckfair") then
+        return "EvilDuckfair"
+    elseif player:GetAttribute("ZoneDuckEvent") then
         return "DuckEvent"
-    elseif player:GetAttribute("ZoneDuck") then
-        return "Duck"
     end
 
     -- Look through workspace as fallback
@@ -124,24 +139,26 @@ local function GetBestDuckEquipment(equipmentType)
     -- Determine which attribute and data to use based on equipment type
     local attributeName, dataModule, defaultEquipment
     
+    
     if equipmentType == "Dumbells" then
         attributeName = "TotalBicepPower"
         dataModule = "Dumbells"
-        defaultEquipment = "Ducky1"
+        defaultEquipment = currentZone == "EvilDuckfair" and "EvilDuckfair1" or "Ducky1"
     elseif equipmentType == "Grips" then
         attributeName = "TotalHandStrength"
         dataModule = "Grips"
-        defaultEquipment = "Ducky1"
+        defaultEquipment = currentZone == "EvilDuckfair" and "EvilDuckfair1" or "Ducky1"
     elseif equipmentType == "Barbells" then
         attributeName = "TotalBicepPower"
         dataModule = "Barbells"
-        defaultEquipment = "Ducky1"
+        defaultEquipment = currentZone == "EvilDuckfair" and "EvilDuckfair1" or "Ducky1"
     else
         -- Default to Dumbells if unknown type
         attributeName = "TotalBicepPower"
         dataModule = "Dumbells"
-        defaultEquipment = "Ducky1"
+        defaultEquipment = currentZone == "EvilDuckfair" and "EvilDuckfair1" or "Ducky1"
     end
+    
     
     local statValue = player:GetAttribute(attributeName) or 0
     
@@ -184,7 +201,7 @@ local TrainingDropdown = Tabs.AutoFight:AddDropdown("TrainingSelect", {
 
 local AutoTrainToggle = Tabs.AutoFight:AddToggle("AutoTrain", {
     Title = "Auto Train",
-    Description = "If this gets an error, please turn it off and on again.",
+    Description = "If this gets an error, turn the toggle off and on again. It occurs when you switch training types with the toggle on :)",
     Default = false
 })
 
@@ -349,22 +366,25 @@ local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 local modelNames = {}
 local armWrestlingFolder = workspace.GameObjects.ArmWrestling
 
--- Populate model names for dropdown - DuckEvent only
 local function findModels(folder)
-    -- Look specifically for DuckEvent folder
     local duckEventFolder = folder:FindFirstChild("DuckEvent")
-    
-    if duckEventFolder then
-        local npcFolder = duckEventFolder:FindFirstChild("NPC")
-        
-        if npcFolder then
-            for _, npc in pairs(npcFolder:GetChildren()) do
-                if npc:IsA("Model") then
-                    table.insert(modelNames, npc.Name)
+    local evilDuckFairFolder = folder:FindFirstChild("EvilDuckfair")
+
+    local function collectNPCModels(eventFolder)
+        if eventFolder then
+            local npcFolder = eventFolder:FindFirstChild("NPC")
+            if npcFolder then
+                for _, npc in pairs(npcFolder:GetChildren()) do
+                    if npc:IsA("Model") then
+                        table.insert(modelNames, npc.Name)
+                    end
                 end
             end
         end
     end
+
+    collectNPCModels(duckEventFolder)
+    collectNPCModels(evilDuckFairFolder)
 end
 
 -- Sort dropdown options alphabetically
@@ -375,7 +395,6 @@ end
 findModels(armWrestlingFolder)
 sortModels()
 
--- Dropdown for selecting boss
 local modelDropdown = Tabs.AutoFight:AddDropdown("ModelDropdown", {
     Title = "Select Boss",
     Values = modelNames,
@@ -383,6 +402,7 @@ local modelDropdown = Tabs.AutoFight:AddDropdown("ModelDropdown", {
     Searchable = true,
     Default = modelNames[1] or "",
 })
+
 
 -- Auto Click toggle
 local AutoClickToggle = Tabs.AutoFight:AddToggle("AutoClick", {
@@ -408,18 +428,29 @@ EndFightSignal.OnClientEvent:Connect(function()
     lastFightEnded = true
 end)
 
--- Function to get NPC reference for selected boss in DuckEvent
 local function getNPCReference(selectedName)
-    -- Look specifically in DuckEvent folder
     local duckEventFolder = armWrestlingFolder:FindFirstChild("DuckEvent")
+    local evilDuckFairFolder = armWrestlingFolder:FindFirstChild("EvilDuckfair")
+    
+    -- Check DuckEvent NPCs
     if duckEventFolder then
         local npcFolder = duckEventFolder:FindFirstChild("NPC")
         if npcFolder and npcFolder:FindFirstChild(selectedName) then
             return npcFolder:FindFirstChild(selectedName)
         end
     end
+    
+    -- Check EvilDuckfair NPCs
+    if evilDuckFairFolder then
+        local npcFolder = evilDuckFairFolder:FindFirstChild("NPC")
+        if npcFolder and npcFolder:FindFirstChild(selectedName) then
+            return npcFolder:FindFirstChild(selectedName)
+        end
+    end
+    
     return nil
 end
+
 
 -- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -925,6 +956,36 @@ AutoGhostFortuneToggle:OnChanged(function()
 end)
 
 
+local TowerSection = Tabs.Tower:AddSection("Towers")
+
+
+-- Prison Cave Buttons
+TowerSection:AddButton({
+    Title = "Use Circus Keys (1x)",
+    Description = "Use the Circus Key once.",
+    Callback = function()
+        local args = {
+            [1] = "EvilDuckCircus",
+            [2] = false
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+TowerSection:AddButton({
+    Title = "Use All Circus Keys (250x)",
+    Description = "Use All Circus Keys (max 250 at a time).",
+    Callback = function()
+        local args = {
+            [1] = "EvilDuckCircus",
+            [2] = true
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+
+
 local MerchantSection = Tabs.Shop:AddSection("Duck Shop")
 -- Dropdown for selecting items
 local DuckShopDropdown = Tabs.Shop:AddDropdown("DuckShopDropdown", {
@@ -1050,7 +1111,285 @@ AutoBuyToggle:OnChanged(function(enabled)
     end
 end)
 
+-- Create fishing section in the Fish tab
+local FishSection = Tabs.Fish:AddSection("Auto Fish")
 
+-- Create toggle for auto fishing
+local AutoFishToggle = Tabs.Fish:AddToggle("AutoFish", {
+    Title = "Auto Fish from Anywhere",
+    Description = "This will be much slower when fighting bosses."
+})
+
+-- Create status paragraph to track what was caught
+local FishingStatusParagraph = Tabs.Fish:Paragraph("FishingStatus", {
+    Title = "Fishing Status",
+    Content = "Toggle on to start fishing",
+    TitleAlignment = "Middle",
+    ContentAlignment = Enum.TextXAlignment.Left
+})
+
+-- Variables for fishing
+local fishingLoops = {}
+local fishStats = {
+    totalCaught = 0,
+    startTime = 0,
+}
+
+-- Function to update the status paragraph
+local function updateFishingStatus()
+    local timeElapsed = os.time() - fishStats.startTime
+    local statusText = "Caught: " .. fishStats.totalCaught
+    
+    if timeElapsed > 0 and AutoFishToggle.Value then
+        local rate = math.floor(fishStats.totalCaught / (timeElapsed / 60) * 10) / 10
+        statusText = statusText .. "\nRate: " .. rate .. " fish/min"
+        statusText = statusText .. "\nRunning: " .. math.floor(timeElapsed / 60) .. "m " .. timeElapsed % 60 .. "s"
+    end
+
+    -- Use pcall to safely set the value
+    local success = pcall(function()
+        FishingStatusParagraph:SetValue(statusText)
+    end)
+
+    -- If SetValue failed, try alternative methods
+    if not success then
+        pcall(function() 
+            FishingStatusParagraph.Content = statusText 
+        end)
+    end
+end
+
+
+-- Function to stop all fishing loops
+local function stopAutoFishing()
+    -- Cancel all running threads
+    for _, thread in pairs(fishingLoops) do
+        if thread then
+            pcall(function() task.cancel(thread) end)
+        end
+    end
+    fishingLoops = {}
+    
+    -- Unequip rod
+    pcall(function()
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RF.SetFishRod:InvokeServer(false)
+    end)
+    
+    -- Update final stats
+    updateFishingStatus()
+end
+
+-- Function to record a fish catch
+local function recordCatch(fishName)
+    if not fishName or fishName == "" then
+        fishName = "Unknown Fish"
+    end
+    
+    fishStats.totalCaught = fishStats.totalCaught + 1
+    fishStats.fishTypes[fishName] = (fishStats.fishTypes[fishName] or 0) + 1
+    updateFishingStatus()
+end
+
+-- Fixed Fishing Spam Script
+local function startAutoFishing()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+    -- Reset statistics
+    fishStats.totalCaught = 0
+    fishStats.fishTypes = {}
+    fishStats.startTime = os.time()
+    updateFishingStatus()
+
+    -- Get the remotes safely with pcall
+    local SetFishRodRemote, StartCatchingRemote, VerifyCatchRemote
+    
+    pcall(function()
+        SetFishRodRemote = ReplicatedStorage.Packages.Knit.Services.ToolService.RF.SetFishRod
+        StartCatchingRemote = ReplicatedStorage.Packages.Knit.Services.NetService.RF.StartCatching
+        VerifyCatchRemote = ReplicatedStorage.Packages.Knit.Services.NetService.RF.VerifyCatch
+    end)
+    
+    -- Check if remotes were found
+    if not (SetFishRodRemote and StartCatchingRemote and VerifyCatchRemote) then
+        local statusText = "Error: Fishing remotes not found!"
+        pcall(function() FishingStatusParagraph:SetValue(statusText) end)
+        return
+    end
+
+    -- Hook into NetService to monitor catches
+    pcall(function()
+        local Knit = require(ReplicatedStorage.Packages.Knit)
+        local NetService = Knit.GetService("NetService")
+        if NetService and NetService.onCatch then
+            NetService.onCatch:Connect(function(itemName)
+                recordCatch(itemName)
+            end)
+        end
+    end)
+    
+    -- Try to hook into any catch events directly
+    pcall(function()
+        local Knit = require(ReplicatedStorage.Packages.Knit)
+        local NetController = Knit.GetController("NetController")
+        if NetController then
+            for k, v in pairs(NetController) do
+                if type(v) == "table" and v.Connect then
+                    v:Connect(function(...)
+                        local args = {...}
+                        if type(args[1]) == "string" then
+                            recordCatch(args[1])
+                        end
+                    end)
+                end
+            end
+        end
+    end)
+
+    -- Set attributes initially and periodically
+    fishingLoops.attributeSetter = spawn(function()
+        while AutoFishToggle.Value do
+            -- Try to find fishing spots in workspace
+            for _, v in pairs(workspace:GetDescendants()) do
+                if v:IsA("Model") and (v.Name:find("Pond") or v.Name:find("Fish")) then
+                    pcall(function() v:SetAttribute("Pond", "DuckPond") end)
+                end
+            end
+            
+            -- Try to set controller attributes
+            pcall(function()
+                local Knit = require(ReplicatedStorage.Packages.Knit)
+                local NetController = Knit.GetController("NetController")
+                if NetController and NetController.IsCatching then
+                    NetController.IsCatching:SetAttribute("Pond", "DuckPond")
+                end
+            end)
+            
+            wait(5)
+            if not AutoFishToggle.Value then break end
+        end
+    end)
+
+    -- Spam equip rod and start catching
+    fishingLoops.rodEquipper = spawn(function()
+        while AutoFishToggle.Value do
+            -- Set fishing rod
+            pcall(function() 
+                if SetFishRodRemote then 
+                    SetFishRodRemote:InvokeServer(true, "Rod") 
+                end
+            end)
+            
+            -- Start catching
+            pcall(function() 
+                if StartCatchingRemote then 
+                    StartCatchingRemote:InvokeServer("DuckPond") 
+                end
+            end)
+            
+            wait(1)
+            if not AutoFishToggle.Value then break end
+        end
+    end)
+
+    -- Spam verify catch
+    fishingLoops.catchVerifier = spawn(function()
+        local lastCatchTime = 0
+        
+        while AutoFishToggle.Value do
+            -- Generate rotation values
+            local rotation = math.random(1, 359)
+            local barRotation = (rotation - 5) % 360
+            
+            -- Try to verify catch
+            pcall(function() 
+                if VerifyCatchRemote then 
+                    local success = VerifyCatchRemote:InvokeServer(rotation, barRotation)
+                    
+                    -- If success is returned and significant time has passed since last catch
+                    if success and tick() - lastCatchTime > 1 then
+                        lastCatchTime = tick()
+                        recordCatch("Fish")  -- Record catch without specific name
+                    end
+                end
+            end)
+            
+            wait(0.1)
+            if not AutoFishToggle.Value then break end
+        end
+    end)
+
+    -- Monitor inventory for new fish (fallback method)
+    fishingLoops.inventoryChecker = spawn(function()
+        -- Initial inventory check
+        local fishInventory = {}
+        
+        pcall(function()
+            local Knit = require(ReplicatedStorage.Packages.Knit)
+            local ReplicaController = Knit.GetController("CustomReplicaController")
+            if ReplicaController then
+                local replica = ReplicaController:GetReplica()
+                if replica and replica.Data and replica.Data.Items and 
+                   replica.Data.Items.ItemInventory and replica.Data.Items.ItemInventory.Fish then
+                    -- Copy initial inventory
+                    for fishName, data in pairs(replica.Data.Items.ItemInventory.Fish) do
+                        fishInventory[fishName] = data["1"] or 0
+                    end
+                end
+            end
+        end)
+        
+        -- Check periodically for changes
+        while AutoFishToggle.Value do
+            wait(2)
+            
+            pcall(function()
+                local Knit = require(ReplicatedStorage.Packages.Knit)
+                local ReplicaController = Knit.GetController("CustomReplicaController")
+                if ReplicaController then
+                    local replica = ReplicaController:GetReplica()
+                    if replica and replica.Data and replica.Data.Items and 
+                       replica.Data.Items.ItemInventory and replica.Data.Items.ItemInventory.Fish then
+                        -- Check for new fish or increased counts
+                        for fishName, data in pairs(replica.Data.Items.ItemInventory.Fish) do
+                            local currentCount = data["1"] or 0
+                            local oldCount = fishInventory[fishName] or 0
+                            
+                            if currentCount > oldCount then
+                                local newCatches = currentCount - oldCount
+                                fishInventory[fishName] = currentCount
+                                
+                                -- Record each new catch
+                                for i = 1, newCatches do
+                                    recordCatch(fishName)
+                                end
+                            end
+                        end
+                    end
+                end
+            end)
+                
+            if not AutoFishToggle.Value then break end
+        end
+    end)
+
+    -- Update stats periodically
+    fishingLoops.statsUpdater = spawn(function()
+        while AutoFishToggle.Value do
+            updateFishingStatus()
+            wait(1)
+            if not AutoFishToggle.Value then break end
+        end
+    end)
+end
+
+-- Set up toggle callback
+AutoFishToggle:OnChanged(function()
+    if AutoFishToggle.Value then
+        startAutoFishing()
+    else
+        stopAutoFishing()
+    end
+end)
 
 
 local ScriptsSection = Tabs.RewindEvent:AddSection("Rewind Event Loadstring")
