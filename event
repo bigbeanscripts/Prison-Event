@@ -468,8 +468,7 @@ AutoFightToggle:OnChanged(function()
     end
 end)
 
--- Eggs Section
-local EggSection = Tabs.Eggs:AddSection("Summer Event Eggs")
+local EggSection = Tabs.Eggs:AddSection("Eggs")
 
 -- Hatch Amount Dropdown
 local HatchAmountDropdown = Tabs.Eggs:AddDropdown("HatchAmount", {
@@ -494,90 +493,66 @@ local AutoHatchToggle = Tabs.Eggs:AddToggle("AutoHatch", {
     Default = false
 })
 
+-- Utility function to check if egg is inside RotatingEggs
+local function isRotatingEgg(eggName)
+    local rotatingEggs = workspace:FindFirstChild("GameObjects") and workspace.GameObjects:FindFirstChild("RotatingEggs")
+    if not rotatingEggs then return false end
+    return rotatingEggs:FindFirstChild(eggName) ~= nil
+end
+
 AutoHatchToggle:OnChanged(function()
     if AutoHatchToggle.Value then
         spawn(function()
-            while true do
-                if not AutoHatchToggle.Value then break end
-
-                local args = {}
+            while AutoHatchToggle.Value do
                 local selectedEgg = EggDropdown.Value
                 local hatchMultiplier = HatchAmountDropdown.Value
 
-                if hatchMultiplier == "1x" then
-                    args = {selectedEgg, nil, nil, false, nil}
-                elseif hatchMultiplier == "3x" then
-                    args = {selectedEgg, nil, true, false}
-                elseif hatchMultiplier == "8x" then
-                    args = {selectedEgg, nil, false, true, true}
-                elseif hatchMultiplier == "30x" then
-                    args = {selectedEgg, nil, nil, false, nil, true}
-                elseif hatchMultiplier == "Max" then
-                    args = {selectedEgg, nil, nil, false, nil, true}
+                local args = {}
+
+                local rotating = isRotatingEgg(selectedEgg)
+
+                if rotating then
+                    -- Use 7th arg = true for rotating eggs (like 2x luck eggs)
+                    if hatchMultiplier == "1x" then
+                        args = {selectedEgg, nil, nil, false, nil, nil, true}
+                    elseif hatchMultiplier == "3x" then
+                        args = {selectedEgg, nil, true, false, nil, nil, true}
+                    elseif hatchMultiplier == "8x" then
+                        args = {selectedEgg, nil, false, true, true, nil, true}
+                    elseif hatchMultiplier == "30x" then
+                        args = {selectedEgg, nil, nil, false, nil, true, true}
+                    elseif hatchMultiplier == "Max" then
+                        args = {selectedEgg, nil, nil, false, nil, true, true}
+                    end
+                else
+                    -- Normal hatch without 7th arg for other eggs
+                    if hatchMultiplier == "1x" then
+                        args = {selectedEgg, nil, nil, false, nil}
+                    elseif hatchMultiplier == "3x" then
+                        args = {selectedEgg, nil, true, false}
+                    elseif hatchMultiplier == "8x" then
+                        args = {selectedEgg, nil, false, true, true}
+                    elseif hatchMultiplier == "30x" then
+                        args = {selectedEgg, nil, nil, false, nil, true}
+                    elseif hatchMultiplier == "Max" then
+                        args = {selectedEgg, nil, nil, false, nil, true}
+                    end
                 end
 
+                -- Invoke server call to hatch egg
                 game:GetService("ReplicatedStorage").Packages.Knit.Services.EggService.RF.purchaseEgg:InvokeServer(unpack(args))
-                wait(0.001)
+
+                wait(0.1)
             end
         end)
     end
 end)
 
-
--- Eggs Section
-local EggSection = Tabs.Eggs:AddSection("2x Luck Eggs")
-
--- Hatch Amount Dropdown
-local HatchAmountDropdown = Tabs.Eggs:AddDropdown("HatchAmount", {
-    Title = "Hatch Amount",
-    Values = {"1x", "3x", "8x", "30x", "Max"},
-    Multi = false,
-    Default = "1x"
+local EggStatusParagraph = Tabs.Eggs:Paragraph("EggInfo", {
+    Title = "Note",
+    Content = "If the egg selected has a 2x luck version, it will hatch that, and return to normal after.",
+    ContentAlignment = Enum.TextXAlignment.Left
 })
-
--- Egg Selection Dropdown (Populated Dynamically)
-local eggNames = getEggNames()
-local EggDropdown = Tabs.Eggs:AddDropdown("EggSelect", {
-    Title = "Select Egg",
-    Values = eggNames,
-    Multi = false,
-    Default = eggNames[1] or "None"
-})
-
--- Auto Hatch Toggle
-local AutoHatchToggle = Tabs.Eggs:AddToggle("AutoHatch", {
-    Title = "Auto Hatch",
-    Default = false
-})
-
-AutoHatchToggle:OnChanged(function()
-    if AutoHatchToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoHatchToggle.Value then break end
-
-                local args = {}
-                local selectedEgg = EggDropdown.Value
-                local hatchMultiplier = HatchAmountDropdown.Value
-
-                if hatchMultiplier == "1x" then
-                    args = {selectedEgg, nil, nil, false, nil, nil, true}
-                elseif hatchMultiplier == "3x" then
-                    args = {selectedEgg, nil, true, false, nil, nil, true}
-                elseif hatchMultiplier == "8x" then
-                    args = {selectedEgg, nil, false, true, true, nil, true}
-                elseif hatchMultiplier == "30x" then
-                    args = {selectedEgg, nil, nil, false, nil, true, true}
-                elseif hatchMultiplier == "Max" then
-                    args = {selectedEgg, nil, nil, false, nil, true, true}
-                end
-
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.EggService.RF.purchaseEgg:InvokeServer(unpack(args))
-                wait(0.001)
-            end
-        end)
-    end
-end)
 
 local WheelSection = Tabs.Wheel:AddSection("Pirate Wheel")
 
