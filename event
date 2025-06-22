@@ -167,7 +167,7 @@ end
 
 
 -- Add Training Section
-local TrainSection = Tabs.AutoFight:AddSection("Duck Auto Train")
+local TrainSection = Tabs.AutoFight:AddSection("Auto Train")
 
 local TrainingDropdown = Tabs.AutoFight:AddDropdown("TrainingSelect", {
     Title = "Select Training Type",
