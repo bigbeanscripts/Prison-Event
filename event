@@ -813,13 +813,13 @@ end)
 -- Create fishing section in the Fish tab
 local FishSection = Tabs.Fish:AddSection("Auto Fish")
 
--- Create toggle for auto fishing
+-- Create toggle for auto fishing with anchoring
 local AutoFishToggle = Tabs.Fish:AddToggle("AutoFish", {
-    Title = "Auto Fish from Anywhere",
-    Description = "This will be much slower when fighting bosses."
+    Title = "Auto Fish",
+    Description = "Automatically catch fish with a 100% success chance."
 })
 
--- Create status paragraph to track what was caught
+-- Create status paragraph to track fishing status
 local FishingStatusParagraph = Tabs.Fish:Paragraph("FishingStatus", {
     Title = "Fishing Status",
     Content = "Toggle on to start fishing",
@@ -827,17 +827,32 @@ local FishingStatusParagraph = Tabs.Fish:Paragraph("FishingStatus", {
     ContentAlignment = Enum.TextXAlignment.Left
 })
 
+local FishingNote = Tabs.Fish:Paragraph("FishingNote", {
+    Title = "Note",
+    Content = "You need to be in the water for this to work. This will break if auto fight/train is enabled.",
+    TitleAlignment = "Middle",
+    ContentAlignment = Enum.TextXAlignment.Left
+})
+
 -- Variables for fishing
-local fishingLoops = {}
+local autoFishingActive = false
+local currentFishingState = "idle"
+local reelingConnection = nil
 local fishStats = {
     totalCaught = 0,
     startTime = 0,
 }
 
+-- Store original fishing controller functions
+local originalUpdateReeling = nil
+local originalUpdateFishPosition = nil
+local originalFishingEnd = nil
+
 -- Function to update the status paragraph
 local function updateFishingStatus()
     local timeElapsed = os.time() - fishStats.startTime
-    local statusText = "Caught: " .. fishStats.totalCaught
+    local statusText = "State: " .. currentFishingState:gsub("^%l", string.upper)
+    statusText = statusText .. "\nCaught: " .. fishStats.totalCaught
     
     if timeElapsed > 0 and AutoFishToggle.Value then
         local rate = math.floor(fishStats.totalCaught / (timeElapsed / 60) * 10) / 10
@@ -845,252 +860,299 @@ local function updateFishingStatus()
         statusText = statusText .. "\nRunning: " .. math.floor(timeElapsed / 60) .. "m " .. timeElapsed % 60 .. "s"
     end
 
-    -- Use pcall to safely set the value
-    local success = pcall(function()
+    pcall(function()
         FishingStatusParagraph:SetValue(statusText)
     end)
-
-    -- If SetValue failed, try alternative methods
-    if not success then
-        pcall(function() 
-            FishingStatusParagraph.Content = statusText 
-        end)
-    end
 end
 
-
--- Function to stop all fishing loops
-local function stopAutoFishing()
-    -- Cancel all running threads
-    for _, thread in pairs(fishingLoops) do
-        if thread then
-            pcall(function() task.cancel(thread) end)
+-- Function to simulate input
+local function simulateInput(inputType, keyCode, began)
+    local fakeInput = {
+        UserInputType = inputType or Enum.UserInputType.MouseButton1,
+        KeyCode = keyCode or Enum.KeyCode.Unknown
+    }
+    
+    pcall(function()
+        local FishingController = require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
+        if began then
+            FishingController.InputBegan(fakeInput, false)
+        else
+            FishingController.InputEnded(fakeInput, false)
         end
-    end
-    fishingLoops = {}
-    
-    -- Unequip rod
-    pcall(function()
-        game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RF.SetFishRod:InvokeServer(false)
     end)
-    
-    -- Update final stats
-    updateFishingStatus()
 end
 
--- Function to record a fish catch
-local function recordCatch(fishName)
-    if not fishName or fishName == "" then
-        fishName = "Unknown Fish"
-    end
-    
-    fishStats.totalCaught = fishStats.totalCaught + 1
-    fishStats.fishTypes[fishName] = (fishStats.fishTypes[fishName] or 0) + 1
-    updateFishingStatus()
-end
-
--- Fixed Fishing Spam Script
-local function startAutoFishing()
-    local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
-    -- Reset statistics
-    fishStats.totalCaught = 0
-    fishStats.fishTypes = {}
-    fishStats.startTime = os.time()
-    updateFishingStatus()
-
-    -- Get the remotes safely with pcall
-    local SetFishRodRemote, StartCatchingRemote, VerifyCatchRemote
-    
-    pcall(function()
-        SetFishRodRemote = ReplicatedStorage.Packages.Knit.Services.ToolService.RF.SetFishRod
-        StartCatchingRemote = ReplicatedStorage.Packages.Knit.Services.NetService.RF.StartCatching
-        VerifyCatchRemote = ReplicatedStorage.Packages.Knit.Services.NetService.RF.VerifyCatch
+-- Function to hook fishing controller with anchoring
+local function hookFishingController()
+    local success, FishingController = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
     end)
     
-    -- Check if remotes were found
-    if not (SetFishRodRemote and StartCatchingRemote and VerifyCatchRemote) then
-        local statusText = "Error: Fishing remotes not found!"
-        pcall(function() FishingStatusParagraph:SetValue(statusText) end)
+    if not success then return false end
+    
+    -- Store original functions
+    originalUpdateReeling = FishingController.UpdateReeling
+    originalUpdateFishPosition = FishingController.UpdateFishPosition
+    originalFishingEnd = FishingController.FishingEnd
+    
+    -- Hook UpdateFishPosition to prevent fish movement when anchored
+    FishingController.UpdateFishPosition = function(...)
+        if AutoFishToggle.Value and FishingController.Reeling then
+            -- Don't update fish position when anchored during reeling
+            return
+        end
+        return originalUpdateFishPosition(...)
+    end
+    
+    -- Hook UpdateReeling with anchoring system
+    FishingController.UpdateReeling = function(...)
+        if not AutoFishToggle.Value then
+            -- Normal behavior when not anchored
+            return originalUpdateReeling(...)
+        end
+        
+        -- Custom anchored behavior
+        local var23_upvw = FishingController._reelingConnection
+        if var23_upvw then
+            var23_upvw:Disconnect()
+        end
+        
+        -- Set up anchored reeling loop
+        local var26_upvw = 0.65
+        local PlayerGui = game.Players.LocalPlayer.PlayerGui
+        local FishingBar = PlayerGui.Fishing.Bar
+        local Inner = FishingBar.Inner
+        local ProgressBar = FishingBar.Progress.Bar
+        
+        local TweenService = game:GetService("TweenService")
+        local CurrentCamera = workspace.CurrentCamera
+        
+        local BackgroundColor3_upvr_2 = Color3.fromRGB(134, 26, 26)
+        local BackgroundColor3_upvr = Color3.fromRGB(255, 56, 56)
+        local OriginalInnerColor = Inner.BackgroundColor3
+        local OriginalBackgroundColor = Inner.Background.BackgroundColor3
+        
+        local TweenInfo_new_result1_upvr = TweenInfo.new(0.05, Enum.EasingStyle.Linear, Enum.EasingDirection.InOut)
+        
+        var23_upvw = game:GetService("RunService").RenderStepped:Connect(function(deltaTime)
+            if not AutoFishToggle.Value then
+                var23_upvw:Disconnect()
+                return
+            end
+            
+            -- Check if we should continue reeling
+            if not FishingController.Reeling then
+                var23_upvw:Disconnect()
+                return
+            end
+            
+            -- Keep inner bar centered and stationary
+            Inner.Position = UDim2.fromScale(0.5, Inner.Position.Y.Scale)
+            
+            -- Since both are centered, they should always overlap
+            local isOverlapping = true
+            
+            -- Update progress based on overlap
+            if isOverlapping then
+                var26_upvw = var26_upvw + deltaTime / 10
+                Inner.BackgroundColor3 = OriginalInnerColor
+                Inner.Background.BackgroundColor3 = OriginalBackgroundColor
+            else
+                var26_upvw = var26_upvw - deltaTime / 10
+                Inner.BackgroundColor3 = BackgroundColor3_upvr_2
+                Inner.Background.BackgroundColor3 = BackgroundColor3_upvr
+            end
+            
+            -- Clamp progress
+            var26_upvw = math.clamp(var26_upvw, 0, 1)
+            
+            -- Update progress bar
+            TweenService:Create(ProgressBar, TweenInfo_new_result1_upvr, {
+                Size = UDim2.fromScale(var26_upvw, 1)
+            }):Play()
+            
+            -- Update camera FOV
+            TweenService:Create(CurrentCamera, TweenInfo_new_result1_upvr, {
+                FieldOfView = 70 + (var26_upvw * 20)
+            }):Play()
+            
+            -- Check for completion
+            if var26_upvw >= 1 then
+                FishingController.FishingEnd(1) -- Success
+            elseif var26_upvw <= 0 then
+                FishingController.FishingEnd(0) -- Failure
+            end
+        end)
+        
+        -- Store connection for cleanup
+        FishingController._reelingConnection = var23_upvw
+    end
+    
+    -- Hook the fishing end function to track catches and restart
+    FishingController.FishingEnd = function(result, ...)
+        local returnValue = originalFishingEnd(result, ...)
+        
+        -- Clean up reeling connection
+        if FishingController._reelingConnection then
+            FishingController._reelingConnection:Disconnect()
+            FishingController._reelingConnection = nil
+        end
+        
+        -- Track successful catches
+        if result == 1 then
+            fishStats.totalCaught = fishStats.totalCaught + 1
+        end
+        
+        currentFishingState = "idle"
+        updateFishingStatus()
+        
+        -- Restart auto fishing after a delay if still enabled
+        if AutoFishToggle.Value and autoFishingActive then
+            spawn(function()
+                wait(0.75) -- Wait exactly 1 second after fishing ends
+                if AutoFishToggle.Value and autoFishingActive then
+                    autoFishingLoop()
+                end
+            end)
+        end
+        
+        return returnValue
+    end
+    
+    return true
+end
+
+-- Main auto fishing loop
+function autoFishingLoop()
+    if not AutoFishToggle.Value or autoFishingActive then
         return
     end
+    
+    autoFishingActive = true
+    
+    spawn(function()
+        while AutoFishToggle.Value and autoFishingActive do
+            local character = game.Players.LocalPlayer.Character
+            if not character then
+                task.wait(1)
+                continue
+            end
+            
+            local FishingController = require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
+            
+            -- Check if we have a fishing rod equipped or in backpack
+            local hasFishingRod = character:FindFirstChild("FishingRod") or game.Players.LocalPlayer.Backpack:FindFirstChild("FishingRod")
+            
+            if not hasFishingRod then
+                currentFishingState = "no rod"
+                updateFishingStatus()
+                task.wait(5)
+                continue
+            end
+            
+            -- Equip fishing rod if not equipped
+            if not character:FindFirstChild("FishingRod") and not FishingController.RodEquipped then
+                pcall(function()
+                    FishingController.ToggleFishingRod()
+                end)
+                task.wait(1)
+            end
+            
+            -- Start fishing process
+            if not FishingController.Casting and not FishingController.CastingStart and not FishingController.Reeling then
+                currentFishingState = "casting"
+                updateFishingStatus()
+                
+                -- Start casting
+                simulateInput(Enum.UserInputType.MouseButton1, nil, true)
+                task.wait(0.1)
+                
+                -- Hold for a moment then release to cast
+                task.wait(math.random(0.5, 1.5)) -- Random cast power
+                simulateInput(Enum.UserInputType.MouseButton1, nil, false)
+                
+                -- Wait exactly 1 second after cast
+                task.wait(1)
+                
+                currentFishingState = "waiting"
+                updateFishingStatus()
+            end
+            
+            -- Wait for reeling to start
+            if FishingController.Reeling and currentFishingState ~= "reeling" then
+                currentFishingState = "reeling"
+                updateFishingStatus()
+                -- The anchoring system is now handled by the hooked UpdateReeling function
+            end
+            
+            task.wait(0.5)
+        end
+        
+        autoFishingActive = false
+        currentFishingState = "idle"
+        updateFishingStatus()
+    end)
+end
 
-    -- Hook into NetService to monitor catches
+-- Function to stop auto fishing
+local function stopAutoFishing()
+    autoFishingActive = false
+    currentFishingState = "stopped"
+    
+    -- Clean up any reeling connections
     pcall(function()
-        local Knit = require(ReplicatedStorage.Packages.Knit)
-        local NetService = Knit.GetService("NetService")
-        if NetService and NetService.onCatch then
-            NetService.onCatch:Connect(function(itemName)
-                recordCatch(itemName)
-            end)
+        local FishingController = require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
+        if FishingController._reelingConnection then
+            FishingController._reelingConnection:Disconnect()
+            FishingController._reelingConnection = nil
         end
     end)
     
-    -- Try to hook into any catch events directly
-    pcall(function()
-        local Knit = require(ReplicatedStorage.Packages.Knit)
-        local NetController = Knit.GetController("NetController")
-        if NetController then
-            for k, v in pairs(NetController) do
-                if type(v) == "table" and v.Connect then
-                    v:Connect(function(...)
-                        local args = {...}
-                        if type(args[1]) == "string" then
-                            recordCatch(args[1])
-                        end
-                    end)
-                end
-            end
-        end
-    end)
-
-    -- Set attributes initially and periodically
-    fishingLoops.attributeSetter = spawn(function()
-        while AutoFishToggle.Value do
-            -- Try to find fishing spots in workspace
-            for _, v in pairs(workspace:GetDescendants()) do
-                if v:IsA("Model") and (v.Name:find("Pond") or v.Name:find("Fish")) then
-                    pcall(function() v:SetAttribute("Pond", "DuckPond") end)
-                end
-            end
-            
-            -- Try to set controller attributes
-            pcall(function()
-                local Knit = require(ReplicatedStorage.Packages.Knit)
-                local NetController = Knit.GetController("NetController")
-                if NetController and NetController.IsCatching then
-                    NetController.IsCatching:SetAttribute("Pond", "DuckPond")
-                end
-            end)
-            
-            wait(5)
-            if not AutoFishToggle.Value then break end
-        end
-    end)
-
-    -- Spam equip rod and start catching
-    fishingLoops.rodEquipper = spawn(function()
-        while AutoFishToggle.Value do
-            -- Set fishing rod
-            pcall(function() 
-                if SetFishRodRemote then 
-                    SetFishRodRemote:InvokeServer(true, "Rod") 
-                end
-            end)
-            
-            -- Start catching
-            pcall(function() 
-                if StartCatchingRemote then 
-                    StartCatchingRemote:InvokeServer("DuckPond") 
-                end
-            end)
-            
-            wait(1)
-            if not AutoFishToggle.Value then break end
-        end
-    end)
-
-    -- Spam verify catch
-    fishingLoops.catchVerifier = spawn(function()
-        local lastCatchTime = 0
-        
-        while AutoFishToggle.Value do
-            -- Generate rotation values
-            local rotation = math.random(1, 359)
-            local barRotation = (rotation - 5) % 360
-            
-            -- Try to verify catch
-            pcall(function() 
-                if VerifyCatchRemote then 
-                    local success = VerifyCatchRemote:InvokeServer(rotation, barRotation)
-                    
-                    -- If success is returned and significant time has passed since last catch
-                    if success and tick() - lastCatchTime > 1 then
-                        lastCatchTime = tick()
-                        recordCatch("Fish")  -- Record catch without specific name
-                    end
-                end
-            end)
-            
-            wait(0.1)
-            if not AutoFishToggle.Value then break end
-        end
-    end)
-
-    -- Monitor inventory for new fish (fallback method)
-    fishingLoops.inventoryChecker = spawn(function()
-        -- Initial inventory check
-        local fishInventory = {}
-        
+    -- Restore original functions
+    if originalUpdateReeling and originalUpdateFishPosition and originalFishingEnd then
         pcall(function()
-            local Knit = require(ReplicatedStorage.Packages.Knit)
-            local ReplicaController = Knit.GetController("CustomReplicaController")
-            if ReplicaController then
-                local replica = ReplicaController:GetReplica()
-                if replica and replica.Data and replica.Data.Items and 
-                   replica.Data.Items.ItemInventory and replica.Data.Items.ItemInventory.Fish then
-                    -- Copy initial inventory
-                    for fishName, data in pairs(replica.Data.Items.ItemInventory.Fish) do
-                        fishInventory[fishName] = data["1"] or 0
-                    end
-                end
-            end
+            local FishingController = require(game:GetService("ReplicatedStorage").Controllers.VSCClient.FishingController)
+            FishingController.UpdateReeling = originalUpdateReeling
+            FishingController.UpdateFishPosition = originalUpdateFishPosition
+            FishingController.FishingEnd = originalFishingEnd
         end)
-        
-        -- Check periodically for changes
-        while AutoFishToggle.Value do
-            wait(2)
-            
-            pcall(function()
-                local Knit = require(ReplicatedStorage.Packages.Knit)
-                local ReplicaController = Knit.GetController("CustomReplicaController")
-                if ReplicaController then
-                    local replica = ReplicaController:GetReplica()
-                    if replica and replica.Data and replica.Data.Items and 
-                       replica.Data.Items.ItemInventory and replica.Data.Items.ItemInventory.Fish then
-                        -- Check for new fish or increased counts
-                        for fishName, data in pairs(replica.Data.Items.ItemInventory.Fish) do
-                            local currentCount = data["1"] or 0
-                            local oldCount = fishInventory[fishName] or 0
-                            
-                            if currentCount > oldCount then
-                                local newCatches = currentCount - oldCount
-                                fishInventory[fishName] = currentCount
-                                
-                                -- Record each new catch
-                                for i = 1, newCatches do
-                                    recordCatch(fishName)
-                                end
-                            end
-                        end
-                    end
-                end
-            end)
-                
-            if not AutoFishToggle.Value then break end
-        end
-    end)
-
-    -- Update stats periodically
-    fishingLoops.statsUpdater = spawn(function()
-        while AutoFishToggle.Value do
-            updateFishingStatus()
-            wait(1)
-            if not AutoFishToggle.Value then break end
-        end
-    end)
+    end
+    
+    updateFishingStatus()
 end
 
 -- Set up toggle callback
 AutoFishToggle:OnChanged(function()
     if AutoFishToggle.Value then
-        startAutoFishing()
+        -- Reset statistics
+        fishStats.totalCaught = 0
+        fishStats.startTime = os.time()
+        
+        -- Hook fishing controller
+        if hookFishingController() then
+            currentFishingState = "starting"
+            updateFishingStatus()
+            
+            -- Start auto fishing after a short delay
+            spawn(function()
+                wait(2)
+                if AutoFishToggle.Value then
+                    autoFishingLoop()
+                end
+            end)
+        else
+            currentFishingState = "error"
+            updateFishingStatus()
+            AutoFishToggle:Set(false)
+        end
     else
         stopAutoFishing()
     end
 end)
 
 local section = Tabs.Quest:AddSection("Pirate Quest")
+
+
 section:AddButton({
     Title = "Complete the pirate quest",
     Description = "Instantly complete the pirate quest.",
