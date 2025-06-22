@@ -124,7 +124,7 @@ local function GetBestDuckEquipment(equipmentType)
     elseif equipmentType == "Grips" then
         attributeName = "TotalSummerGripV2"
         dataModule = "Grips"
-        defaultEquipment = "SumerIsland1"
+        defaultEquipment = "SummerIsland1"
     elseif equipmentType == "Barbells" then 
         attributeName = "TotalSummerBicepV2"
         dataModule = "Barbells"
