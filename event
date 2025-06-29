@@ -526,7 +526,7 @@ AutoFightToggle:OnChanged(function()
                         end)
                     end
                 end
-                task.wait(0.5) -- fight every 0.5s
+                task.wait(0.01) -- fight every 0.5s
             end
         end)
     else
