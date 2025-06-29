@@ -1,6 +1,6 @@
 -- Function to get all valid egg names in alphabetical order, excluding "Egg Rewind"
 local function getEggNames()
-    local eggNames = {}
+    local eggNamesSet = {} -- Use a set to prevent duplicates
     local zones = workspace:FindFirstChild("Zones")
 
     if zones then
@@ -11,8 +11,11 @@ local function getEggNames()
                     local eggs = interactables:FindFirstChild("Eggs")
                     if eggs then
                         for _, egg in pairs(eggs:GetChildren()) do
-                            if egg.Name ~= "Rewind" then
-                                table.insert(eggNames, egg.Name)
+                            if not egg.Name:lower():find("rewind") then
+                                local name = egg.Name
+                                name = name:gsub("%s*[Ee][Gg][Gg]%s*$", "") -- Remove 'egg' at end, case-insensitive
+                                name = name:match("^%s*(.-)%s*$") -- Trim leading/trailing whitespace
+                                eggNamesSet[name] = true
                             end
                         end
                     end
@@ -21,9 +24,16 @@ local function getEggNames()
         end
     end
 
-    table.sort(eggNames) -- Sort alphabetically
+    -- Convert set to list and sort
+    local eggNames = {}
+    for name in pairs(eggNamesSet) do
+        table.insert(eggNames, name)
+    end
+
+    table.sort(eggNames)
     return eggNames
 end
+
 
 game:GetService("ReplicatedStorage").Packages.Knit.Services.WrestleService.RF.OnAutoFight:InvokeServer()
 
@@ -1837,6 +1847,7 @@ AutoOpenVillainChestToggle:OnChanged(function()
         spawn(function()
             while AutoOpenVillainChestToggle.Value do
                     local keyObject = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Island Key/1"]
+
                 
                 if keyObject then
                     local amtText = keyObject.ButtonDisplay.Amt.Text
