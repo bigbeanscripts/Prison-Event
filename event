@@ -511,31 +511,47 @@ AutoClickToggle:OnChanged(function()
     end
 end)
 
+-- Store threads
+local autoFightThreads = {}
+
 -- Auto Fight toggle handler
 AutoFightToggle:OnChanged(function()
     if AutoFightToggle.Value then
-        if autoFightLoop then task.cancel(autoFightLoop) end
-        autoFightLoop = task.spawn(function()
-            while AutoFightToggle.Value do
-                local selectedName = modelDropdown.Value
-                if selectedName then
-                    local npcModel = getNPCReference(selectedName)
-                    if npcModel then
-                        pcall(function()
-                            ArmwrestleServiceRF:WaitForChild("RequestStartFight"):InvokeServer(npcModel)
-                        end)
-                    end
-                end
-                task.wait(0.01) -- fight every 0.5s
-            end
-        end)
-    else
-        if autoFightLoop then
-            task.cancel(autoFightLoop)
-            autoFightLoop = nil
+        -- Cancel any existing threads
+        for _, threadFlag in pairs(autoFightThreads) do
+            threadFlag.active = false
         end
+        autoFightThreads = {}
+
+        -- Start 10 threads
+        for i = 1, 100 do
+            local threadFlag = { active = true }
+            table.insert(autoFightThreads, threadFlag)
+
+            task.spawn(function()
+                while threadFlag.active and AutoFightToggle.Value do
+                    local selectedName = modelDropdown.Value
+                    if selectedName then
+                        local npcModel = getNPCReference(selectedName)
+                        if npcModel then
+                            pcall(function()
+                                ArmwrestleServiceRF:WaitForChild("RequestStartFight"):InvokeServer(npcModel)
+                            end)
+                        end
+                    end
+                    task.wait(0.001)
+                end
+            end)
+        end
+    else
+        -- Turn off threads
+        for _, threadFlag in pairs(autoFightThreads) do
+            threadFlag.active = false
+        end
+        autoFightThreads = {}
     end
 end)
+
 
 local EggSection = Tabs.Eggs:AddSection("Eggs")
 
@@ -1666,8 +1682,6 @@ section:AddButton({
 })
 
 
-
--- Dragon Trial Section
 local DragonTrialSection = Tabs.Trial:AddSection("Island Trial")
 
 -- Toggle state tracking
@@ -1676,17 +1690,19 @@ local wasAutoClickOn = false
 local lastJoinAttemptTime = 0
 local togglesDisabled = false
 
--- Add Status Label for cooldown
+
+
+-- Status paragraph for cooldown
 local DragonTrialStatus = DragonTrialSection:Paragraph("Cooldown",{
     Title = "Island Trial Cooldown",
     Content = "Loading..."
 })
 
--- Update status every second
+-- Update trial status text
 spawn(function()
     while true do
         local success, timerGui = pcall(function()
-            return game:GetService("Players").LocalPlayer.PlayerGui.Misc.Trials.Timer.Island.Timer
+            return player.PlayerGui.Misc.Trials.Timer.Island.Timer
         end)
         
         if success and timerGui then
@@ -1698,64 +1714,92 @@ spawn(function()
     end
 end)
 
+-- Auto join trial toggle
 local AutoDragonTrialToggle = DragonTrialSection:AddToggle("AutoDragonTrial", {
-    Title = "Auto Join Island  Trial",
-    Description = "Auto join the Island trial. It will temporarily turn off the toggles for Auto Fight and Auto Click. It will return them to their previous states after the trial. There will be a short delay before entering the trial.",
+    Title = "Auto Join Island Trial",
+    Description = "Temporarily disables Auto Fight/Click. Re-enables them after trial ends.",
     Default = false
 })
+
+
+-- Crit threads control
+local RequestCritHit = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF"):WaitForChild("RequestCritHit")
+local critThreads = {}
+local critLoopRunning = false
+
+local function startCritThreads()
+    if critLoopRunning then return end
+    critLoopRunning = true
+    for i = 1, 10 do
+        local threadIndex = i
+        critThreads[threadIndex] = true
+
+        task.spawn(function()
+            while critThreads[threadIndex] and AutoDragonTrialToggle.Value do
+                pcall(function()
+                    RequestCritHit:InvokeServer()
+                end)
+                task.wait(0.01)
+            end
+        end)
+    end
+end
+
+local function stopCritThreads()
+    critLoopRunning = false
+    for i = 1, #critThreads do
+        critThreads[i] = false
+    end
+    critThreads = {}
+end
 
 AutoDragonTrialToggle:OnChanged(function()
     if AutoDragonTrialToggle.Value then
         spawn(function()
             while AutoDragonTrialToggle.Value do
                 local success, timerGui = pcall(function()
-                    return game:GetService("Players").LocalPlayer.PlayerGui.Misc.Trials.Timer.Island.Timer
+                    return player.PlayerGui.Misc.Trials.Timer.Island.Timer
                 end)
 
                 if success and timerGui then
-                    -- If timer is Ready!, disable toggles and enter trial
                     if timerGui.Text == "Ready!" then
+
                         local currentTime = os.time()
                         if currentTime - lastJoinAttemptTime < 180 then
                             wait(1)
                             continue
                         end
 
-                        -- Only save and disable toggles if they aren't already disabled
                         if not togglesDisabled then
-                            -- Save current toggle states
                             wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
                             wasAutoClickOn = AutoClickToggle and AutoClickToggle.Value or false
 
-                            -- Turn off toggles
                             if wasAutoFightOn then
                                 AutoFightToggle:SetValue(false)
-                                wait(3)
+                                wait(2)
                             end
                             
                             if wasAutoClickOn then
                                 AutoClickToggle:SetValue(false)
-                                wait(3)
+                                wait(2)
                             end
                             
                             togglesDisabled = true
                         end
 
+                        wait(2)
 
-                        -- Wait 2 seconds before joining
-                        wait(3)
+                        startCritThreads()
 
-                        -- Attempt to join the trial
                         local args = { "Island" }
-                        local result = game:GetService("ReplicatedStorage").Packages.Knit.Services.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
+                        local result = KnitServices.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
                         lastJoinAttemptTime = os.time()
-                    
-                    -- If timer is not Ready!, re-enable toggles that were on (after waiting 5 seconds)
                     else
+                        stopCritThreads()
+
                         if togglesDisabled then
-                            -- Wait 5 seconds before re-enabling toggles
                             wait(5)
-                            
+
                             if wasAutoFightOn and AutoFightToggle then
                                 AutoFightToggle:SetValue(true)
                                 wait(3)
@@ -1765,37 +1809,29 @@ AutoDragonTrialToggle:OnChanged(function()
                                 AutoClickToggle:SetValue(true)
                                 wait(3)
                             end
-                            
+
                             wasAutoFightOn = false
                             wasAutoClickOn = false
                             togglesDisabled = false
                         end
                     end
                 end
-                
                 wait(1)
             end
         end)
+    else
+        stopCritThreads()
     end
 end)
 
--- Add Villain Chest Section
 local VillainChestSection = Tabs.Trial:AddSection("Island Chest")
 
--- Add Status Label for Villain Chest Key Amount
-local VillainChestStatus = VillainChestSection:Paragraph("Trial",{
+local VillainChestStatus = VillainChestSection:Paragraph("Trial", {
     Title = "Island Chest Key Amount",
     Content = "Loading..."
 })
 
--- Add Toggle for Auto Open Villain Chest
-local AutoOpenVillainChestToggle = VillainChestSection:AddToggle("AutoOpenVillainChest", {
-    Title = "Auto Open Island Chest",
-    Description = "Automatically opens Island Chest if you have a key",
-    Default = false
-})
-
--- Function to parse amount text and handle 'k' suffix
+-- Parse 'K' values like 1.2K
 local function parseAmount(amtText)
     local numStr = amtText:match("%d+%.?%d*")
     if not numStr then return 0 end
@@ -1808,10 +1844,8 @@ local function parseAmount(amtText)
     end
 end
 
--- Create invisible button if it doesn't exist
-local player = game:GetService("Players").LocalPlayer
+-- Invisible button for firing chest open
 local screenGui = player.PlayerGui:WaitForChild("ScreenGui")
-
 local villainButton = screenGui:FindFirstChild("InvisibleVillainButton")
 if not villainButton then
     villainButton = Instance.new("TextButton")
@@ -1824,53 +1858,52 @@ if not villainButton then
     villainButton.Parent = screenGui
 end
 
+-- Update key status every second
 spawn(function()
     while true do
-        local keyObject = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Island Key/1"]
+        local success, keyObject = pcall(function()
+            return player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Island Key/1"]
+        end)
 
-        if keyObject and keyObject:FindFirstChild("ButtonDisplay") then
+        if success and keyObject and keyObject:FindFirstChild("ButtonDisplay") then
             local amtText = keyObject.ButtonDisplay.Amt.Text
             VillainChestStatus:SetContent(amtText)
         else
-            VillainChestStatus:SetContent("Not Found")
+            VillainChestStatus:SetContent("No Keys")
         end
 
-        wait(1) -- Update status every second
+        wait(1)
     end
 end)
 
+-- Auto open chest toggle
+local AutoOpenVillainChestToggle = VillainChestSection:AddToggle("AutoOpenVillainChest", {
+    Title = "Auto Open Island Chest",
+    Description = "Automatically opens Island Chest if you have a key",
+    Default = false
+})
 
--- Toggle for auto-opening the chest
 AutoOpenVillainChestToggle:OnChanged(function()
     if AutoOpenVillainChestToggle.Value then
-        -- Start a new loop that only runs while the toggle is on
         spawn(function()
             while AutoOpenVillainChestToggle.Value do
-                    local keyObject = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Island Key/1"]
-
+                local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Island Key/1"]
                 
-                if keyObject then
+                if keyObject and keyObject:FindFirstChild("ButtonDisplay") then
                     local amtText = keyObject.ButtonDisplay.Amt.Text
                     local amount = parseAmount(amtText)
-                    
+
                     if amount > 0 then
                         pcall(function()
                             villainButton.MouseButton1Click:Fire()
                         end)
-                        
-                        local args = {
-                            [1] = "IslandChest"
-                        }
+
+                        local args = { "IslandChest" }
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
                     end
                 end
-                
-                wait(0.1) -- Check frequently for keys
-                
-                -- Break out of the loop if the toggle is turned off
-                if not AutoOpenVillainChestToggle.Value then
-                    break
-                end
+
+                wait(0.1)
             end
         end)
     end
