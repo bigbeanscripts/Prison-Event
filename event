@@ -1207,6 +1207,12 @@ AutoFishToggle:OnChanged(function()
     end
 end)
 
+local Knit = require(ReplicatedStorage.Packages.Knit)
+local ReplicaController = require(ReplicatedStorage.ReplicaController)
+ReplicaController.RequestData()
+local CustomReplicaController = Knit.GetController("CustomReplicaController")
+replica = CustomReplicaController and CustomReplicaController:GetReplica()
+
 -- Helper to recursively find a nested table by name
 local function findTableByName(tbl, targetName)
     for key, value in pairs(tbl) do
@@ -1552,6 +1558,7 @@ local wasAutoFightOn = false
 local wasAutoClickOn = false
 local lastJoinAttemptTime = 0
 local togglesDisabled = false
+player = game.Players.LocalPlayer
 
 
 
@@ -1585,14 +1592,22 @@ local AutoDragonTrialToggle = DragonTrialSection:AddToggle("AutoDragonTrial", {
 })
 
 
--- Crit threads control
+-- Crit & Click Threads Control
 local RequestCritHit = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF"):WaitForChild("RequestCritHit")
-local critThreads = {}
-local critLoopRunning = false
+local RequestClick = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF"):WaitForChild("RequestClick")
 
+-- Separate control tables for crit and click threads
+local critThreads = {}
+local clickThreads = {}
+
+local critLoopRunning = false
+local clickLoopRunning = false
+
+-- Start Crit Threads
 local function startCritThreads()
     if critLoopRunning then return end
     critLoopRunning = true
+
     for i = 1, 10 do
         local threadIndex = i
         critThreads[threadIndex] = true
@@ -1608,6 +1623,7 @@ local function startCritThreads()
     end
 end
 
+-- Stop Crit Threads
 local function stopCritThreads()
     critLoopRunning = false
     for i = 1, #critThreads do
@@ -1615,6 +1631,36 @@ local function stopCritThreads()
     end
     critThreads = {}
 end
+
+-- Start Click Threads
+local function startClickThreads()
+    if clickLoopRunning then return end
+    clickLoopRunning = true
+
+    for i = 1, 10 do
+        local threadIndex = i
+        clickThreads[threadIndex] = true
+
+        task.spawn(function()
+            while clickThreads[threadIndex] and AutoDragonTrialToggle.Value do
+                pcall(function()
+                    RequestClick:InvokeServer()
+                end)
+                task.wait(0.01)
+            end
+        end)
+    end
+end
+
+-- Stop Click Threads
+local function stopClickThreads()
+    clickLoopRunning = false
+    for i = 1, #clickThreads do
+        clickThreads[i] = false
+    end
+    clickThreads = {}
+end
+
 
 AutoDragonTrialToggle:OnChanged(function()
     if AutoDragonTrialToggle.Value then
@@ -1653,6 +1699,8 @@ AutoDragonTrialToggle:OnChanged(function()
                         wait(2)
 
                         startCritThreads()
+                        wait(3)
+                        startClickThreads()
 
                         local args = { "Island" }
                         local result = KnitServices.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
@@ -1684,6 +1732,7 @@ AutoDragonTrialToggle:OnChanged(function()
         end)
     else
         stopCritThreads()
+        stopClickThreads()
     end
 end)
 
@@ -1707,7 +1756,7 @@ local function parseAmount(amtText)
     end
 end
 
--- Invisible button for firing chest open
+local player = game.Players.LocalPlayer
 local screenGui = player.PlayerGui:WaitForChild("ScreenGui")
 local villainButton = screenGui:FindFirstChild("InvisibleVillainButton")
 if not villainButton then
@@ -1777,6 +1826,8 @@ local CustomReplicaController = Knit.GetController("CustomReplicaController")
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local localPlayer = Players.LocalPlayer
+
+
 
 -- IMPORTANT: Add this line to access PersonalWrestlers data
 local PersonalWrestlers = require(ReplicatedStorage.Data:WaitForChild("PersonalWrestlers"))
