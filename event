@@ -713,6 +713,17 @@ AutoBuyToggle:OnChanged(function()
     end
 end)
 
+-- Create SuperRB Section
+local EventSection = Tabs.Merchant:AddSection("Individual Items")
+
+-- Add Load Script Button
+EventSection:AddButton({
+    Title = "Load better Merchant script",
+    Description = "This allows you to select individual items, but causes more lag.",
+    Callback = function()
+        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/SeperateMerchant/refs/heads/main/LessLag"))()
+    end
+})
 
 
 
