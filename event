@@ -524,7 +524,7 @@ AutoFightToggle:OnChanged(function()
         autoFightThreads = {}
 
         -- Start 10 threads
-        for i = 1, 100 do
+        for i = 1, 250 do
             local threadFlag = { active = true }
             table.insert(autoFightThreads, threadFlag)
 
@@ -1594,14 +1594,10 @@ local AutoDragonTrialToggle = DragonTrialSection:AddToggle("AutoDragonTrial", {
 
 -- Crit & Click Threads Control
 local RequestCritHit = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF"):WaitForChild("RequestCritHit")
-local RequestClick = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF"):WaitForChild("RequestClick")
 
--- Separate control tables for crit and click threads
 local critThreads = {}
-local clickThreads = {}
-
 local critLoopRunning = false
-local clickLoopRunning = false
+
 
 -- Start Crit Threads
 local function startCritThreads()
@@ -1615,9 +1611,10 @@ local function startCritThreads()
         task.spawn(function()
             while critThreads[threadIndex] and AutoDragonTrialToggle.Value do
                 pcall(function()
+                    wait(0.01) -- Wait a bit before sending crit request
                     RequestCritHit:InvokeServer()
                 end)
-                task.wait(0.01)
+                task.wait(0.1)
             end
         end)
     end
@@ -1632,34 +1629,7 @@ local function stopCritThreads()
     critThreads = {}
 end
 
--- Start Click Threads
-local function startClickThreads()
-    if clickLoopRunning then return end
-    clickLoopRunning = true
 
-    for i = 1, 10 do
-        local threadIndex = i
-        clickThreads[threadIndex] = true
-
-        task.spawn(function()
-            while clickThreads[threadIndex] and AutoDragonTrialToggle.Value do
-                pcall(function()
-                    RequestClick:InvokeServer()
-                end)
-                task.wait(0.01)
-            end
-        end)
-    end
-end
-
--- Stop Click Threads
-local function stopClickThreads()
-    clickLoopRunning = false
-    for i = 1, #clickThreads do
-        clickThreads[i] = false
-    end
-    clickThreads = {}
-end
 
 
 AutoDragonTrialToggle:OnChanged(function()
@@ -1699,8 +1669,6 @@ AutoDragonTrialToggle:OnChanged(function()
                         wait(2)
 
                         startCritThreads()
-                        wait(3)
-                        startClickThreads()
 
                         local args = { "Island" }
                         local result = KnitServices.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
@@ -1732,7 +1700,6 @@ AutoDragonTrialToggle:OnChanged(function()
         end)
     else
         stopCritThreads()
-        stopClickThreads()
     end
 end)
 
