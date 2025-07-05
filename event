@@ -1630,7 +1630,6 @@ section:AddButton({
     end
 })
 
-
 local DragonTrialSection = Tabs.Trial:AddSection("Island Trial")
 
 -- Toggle state tracking
@@ -1639,8 +1638,6 @@ local wasAutoClickOn = false
 local lastJoinAttemptTime = 0
 local togglesDisabled = false
 player = game.Players.LocalPlayer
-
-
 
 -- Status paragraph for cooldown
 local DragonTrialStatus = DragonTrialSection:Paragraph("Cooldown",{
@@ -1671,13 +1668,11 @@ local AutoDragonTrialToggle = DragonTrialSection:AddToggle("AutoDragonTrial", {
     Default = false
 })
 
-
 -- Crit & Click Threads Control
 local RequestCritHit = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF"):WaitForChild("RequestCritHit")
 
 local critThreads = {}
 local critLoopRunning = false
-
 
 -- Start Crit Threads
 local function startCritThreads()
@@ -1709,8 +1704,44 @@ local function stopCritThreads()
     critThreads = {}
 end
 
-
-
+-- Teleport function
+local function teleportToSelectedNPCZone()
+    local selectedNPC = modelDropdown.Value
+    if not selectedNPC then return end
+    
+    -- Check which island the selected NPC is on
+    local targetZone = nil
+    
+    -- Check SummerIsland NPCs
+    local summerNPCs = workspace.GameObjects.ArmWrestling.SummerIsland.NPC:GetChildren()
+    for _, npc in pairs(summerNPCs) do
+        if npc:IsA("Model") and npc.Name == selectedNPC then
+            targetZone = workspace.Zones.SummerIsland.Interactables.Teleports.Locations.Spawn
+            break
+        end
+    end
+    
+    -- Check LostIsland NPCs if not found on SummerIsland
+    if not targetZone then
+        local lostNPCs = workspace.GameObjects.ArmWrestling.LostIsland.NPC:GetChildren()
+        for _, npc in pairs(lostNPCs) do
+            if npc:IsA("Model") and npc.Name == selectedNPC then
+                targetZone = workspace.Zones.LostIsland.Interactables.Teleports.Locations.Spawn
+                break
+            end
+        end
+    end
+    
+    -- Teleport to the determined zone
+    if targetZone then
+        pcall(function()
+            local args = {
+                [1] = targetZone
+            }
+            game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
+        end)
+    end
+end
 
 AutoDragonTrialToggle:OnChanged(function()
     if AutoDragonTrialToggle.Value then
@@ -1748,16 +1779,21 @@ AutoDragonTrialToggle:OnChanged(function()
 
                         wait(2)
 
-                        startCritThreads()
-
+                    
                         local args = { "Island" }
                         local result = KnitServices.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
+                        wait(1)
+                        startCritThreads()
                         lastJoinAttemptTime = os.time()
                     else
                         stopCritThreads()
 
                         if togglesDisabled then
                             wait(5)
+
+                            -- Teleport to the selected NPC's zone before re-enabling toggles
+                            teleportToSelectedNPCZone()
+                            wait(2)
 
                             if wasAutoFightOn and AutoFightToggle then
                                 AutoFightToggle:SetValue(true)
@@ -1782,6 +1818,7 @@ AutoDragonTrialToggle:OnChanged(function()
         stopCritThreads()
     end
 end)
+
 
 local VillainChestSection = Tabs.Trial:AddSection("Island Chest")
 
