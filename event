@@ -630,10 +630,8 @@ local function aggressiveCleanup()
     task.wait(0.1)
     
     -- Get memory info after cleanup
-    local memoryAfter = gcinfo()
-    
+    local memoryAfter = gcinfo()  
 end
-
 
 
 local EggSection = Tabs.Eggs:AddSection("Eggs")
@@ -1791,7 +1789,7 @@ AutoDragonTrialToggle:OnChanged(function()
                         if togglesDisabled then
                             wait(5)
 
-                            -- Teleport to the selected NPC's zone before re-enabling toggles
+                            -- Teleport to the selected NPC zone before re-enabling toggles
                             teleportToSelectedNPCZone()
                             wait(2)
 
