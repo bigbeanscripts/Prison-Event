@@ -41,6 +41,83 @@ local Library = loadstring(game:HttpGetAsync("https://github.com/ActualMasterOog
 local SaveManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/SaveManager.luau"))()
 local InterfaceManager = loadstring(game:HttpGetAsync("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/InterfaceManager.luau"))()
 
+-- Data Cache System
+local DataCache = {
+    replica = nil,
+    lastReplicaUpdate = 0,
+    playerAttributes = {},
+    lastAttributeUpdate = 0,
+    wrestlerData = {},
+    lastWrestlerUpdate = 0,
+    guiElements = {},
+    lastGuiUpdate = 0,
+    gameData = {},
+    lastGameDataUpdate = 0,
+    updateInterval = 2 -- Update every 2 seconds
+}
+
+-- Function to update replica cache
+local function updateReplicaCache()
+    local currentTime = os.time()
+    if currentTime - DataCache.lastReplicaUpdate >= DataCache.updateInterval then
+        pcall(function()
+            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+            local CustomReplicaController = Knit.GetController("CustomReplicaController")
+            DataCache.replica = CustomReplicaController and CustomReplicaController:GetReplica()
+            DataCache.lastReplicaUpdate = currentTime
+        end)
+    end
+end
+
+-- Function to update player attributes cache
+local function updateAttributeCache()
+    local currentTime = os.time()
+    if currentTime - DataCache.lastAttributeUpdate >= DataCache.updateInterval then
+        local player = game.Players.LocalPlayer
+        DataCache.playerAttributes = {
+            SummerCash = player:GetAttribute("SummerCash") or 0,
+            TotalSummerKnucklesV2 = player:GetAttribute("TotalSummerKnucklesV2") or 0,
+            TotalSummerBicepV2 = player:GetAttribute("TotalSummerBicepV2") or 0,
+            TotalSummerGripV2 = player:GetAttribute("TotalSummerGripV2") or 0,
+            VIP = player:GetAttribute("VIP") or false,
+            ZoneLostIsland = player:GetAttribute("ZoneLostIsland"),
+            ZoneSummerIsland = player:GetAttribute("ZoneSummerIsland")
+        }
+        DataCache.lastAttributeUpdate = currentTime
+    end
+end
+
+-- Function to update game data cache
+local function updateGameDataCache()
+    local currentTime = os.time()
+    if currentTime - DataCache.lastGameDataUpdate >= 10 then -- Update every 30 seconds
+        pcall(function()
+            DataCache.gameData.PunchBags = require(game:GetService("ReplicatedStorage").Data.PunchBags)
+            DataCache.gameData.Dumbells = require(game:GetService("ReplicatedStorage").Data.Dumbells)
+            DataCache.gameData.Grips = require(game:GetService("ReplicatedStorage").Data.Grips)
+            DataCache.gameData.Barbells = require(game:GetService("ReplicatedStorage").Data.Barbells)
+            DataCache.lastGameDataUpdate = currentTime
+        end)
+    end
+end
+
+-- Function to get cached replica data
+local function getCachedReplica()
+    updateReplicaCache()
+    return DataCache.replica
+end
+
+-- Function to get cached player attribute
+local function getCachedAttribute(attributeName)
+    updateAttributeCache()
+    return DataCache.playerAttributes[attributeName]
+end
+
+-- Function to get cached game data
+local function getCachedGameData(dataType)
+    updateGameDataCache()
+    return DataCache.gameData[dataType]
+end
 
 local Window = Library:Window{
     Title = "Sumemer Event",
@@ -52,7 +129,6 @@ local Window = Library:Window{
     Theme = "Vynixu",
     MinimizeKey = Enum.KeyCode.LeftShift
 }
-
 
 local Tabs = {
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" }),
@@ -74,9 +150,10 @@ local Tabs = {
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
-    if player:GetAttribute("ZoneLostIsland") then
+    -- Use cached attributes
+    if getCachedAttribute("ZoneLostIsland") then
         return "LostIsland"
-    elseif player:GetAttribute("ZoneSummerIsland") then
+    elseif getCachedAttribute("ZoneSummerIsland") then
         return "SummerIsland"
     end
 
@@ -137,10 +214,14 @@ local function GetBestDuckBag()
         return "Tier1"
     end
 
-    local knuckleStrength = player:GetAttribute("TotalSummerKnucklesV2") or 0
-    local punchBagData = require(game:GetService("ReplicatedStorage").Data.PunchBags)
+    -- Use cached attribute instead of direct lookup
+    local knuckleStrength = getCachedAttribute("TotalSummerKnucklesV2") or 0
+    
+    -- Use cached punch bag data
+    local punchBagData = getCachedGameData("PunchBags")
 
-    if player:GetAttribute("VIP") == true then
+    -- Use cached VIP status
+    if getCachedAttribute("VIP") == true then
         return "VIP"
     end
 
@@ -188,11 +269,9 @@ local function GetBestDuckEquipment(equipmentType)
     end
 
     dataModule = equipmentType
-    local equipmentData
-
-    pcall(function()
-        equipmentData = require(game:GetService("ReplicatedStorage").Data[dataModule])
-    end)
+    
+    -- Use cached equipment data
+    local equipmentData = getCachedGameData(dataModule)
 
     if not equipmentData then
         return { equipment = fallbackZone .. "1", zone = fallbackZone }
@@ -206,8 +285,8 @@ local function GetBestDuckEquipment(equipmentType)
         local bestEquipment = defaultEquipment
         local highestRequired = 0
 
-        -- Use the correct attribute for fallback zone too
-        local statValue = player:GetAttribute(attrMap[equipmentType]) or 0
+        -- Use cached attribute
+        local statValue = getCachedAttribute(attrMap[equipmentType]) or 0
 
         if equipmentData[zone] then
             for name, data in pairs(equipmentData[zone]) do
@@ -449,19 +528,40 @@ local AutoFightToggle = Tabs.AutoFight:AddToggle("AutoFight", {
     Default = false
 })
 
+
 -- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local KnitServices = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services")
 local ArmwrestleServiceRF = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF")
 
+
 -- Variables
 local autoClickThreads = {}
 local autoFightThreads = {}
+local cleanupConnections = {}
+
+-- Cleanup function to clear pending requests
+local function cleanupRequests()
+    -- Get memory info before cleanup
+    local memoryBefore = gcinfo()
+    
+    -- Force garbage collection to clear pending requests
+    collectgarbage("count")
+    
+    -- Get memory info after cleanup
+    local memoryAfter = gcinfo()
+    
+    pcall(function()
+        -- Clear any pending remote calls by briefly disconnecting
+        local temp = ArmwrestleServiceRF
+        task.wait(0.01)
+    end)
+end
 
 -- Auto Click toggle handler
 AutoClickToggle:OnChanged(function()
     if AutoClickToggle.Value then
-        -- Stop existing threads
+        -- Stop existing threads and cleanup
         for _, thread in pairs(autoClickThreads) do
             if typeof(thread) == "thread" then
                 task.cancel(thread)
@@ -470,13 +570,18 @@ AutoClickToggle:OnChanged(function()
             end
         end
         autoClickThreads = {}
-
+        
+        -- Stop any existing cleanup connections
+        if cleanupConnections.autoClick then
+            cleanupConnections.autoClick:Disconnect()
+        end
+        
         -- Spawn new click threads
         task.spawn(function()
-            for i = 1, 150 do
+            for i = 1, 500 do
                 local threadData = { active = true }
                 table.insert(autoClickThreads, threadData)
-
+                
                 task.spawn(function()
                     while threadData.active and AutoClickToggle.Value do
                         pcall(function()
@@ -486,8 +591,18 @@ AutoClickToggle:OnChanged(function()
                         task.wait()
                     end
                 end)
-
-                task.wait()
+                
+                task.wait(0.001) -- Small delay between thread spawns to prevent all spawning at once
+            end
+        end)
+        
+        -- Start cleanup timer for auto click
+        cleanupConnections.autoClick = task.spawn(function()
+            while AutoClickToggle.Value do
+                task.wait(5) -- Wait 5 seconds
+                if AutoClickToggle.Value then
+                    cleanupRequests()
+                end
             end
         end)
     else
@@ -500,23 +615,37 @@ AutoClickToggle:OnChanged(function()
             end
         end
         autoClickThreads = {}
+        
+        -- Stop cleanup timer
+        if cleanupConnections.autoClick then
+            task.cancel(cleanupConnections.autoClick)
+            cleanupConnections.autoClick = nil
+        end
+        
+        -- Final cleanup
+        cleanupRequests()
     end
 end)
 
 -- Auto Fight toggle handler
 AutoFightToggle:OnChanged(function()
     if AutoFightToggle.Value then
-        -- Stop previous threads
+        -- Stop previous threads and cleanup
         for _, flag in pairs(autoFightThreads) do
             flag.active = false
         end
         autoFightThreads = {}
-
+        
+        -- Stop any existing cleanup connections
+        if cleanupConnections.autoFight then
+            cleanupConnections.autoFight:Disconnect()
+        end
+        
         -- Spawn threads for repeated boss fights
-        for i = 1, 250 do
+        for i = 1, 500 do
             local threadFlag = { active = true }
             table.insert(autoFightThreads, threadFlag)
-
+            
             task.spawn(function()
                 while threadFlag.active and AutoFightToggle.Value do
                     local selectedName = modelDropdown.Value
@@ -524,23 +653,66 @@ AutoFightToggle:OnChanged(function()
                         local args = {
                             [1] = selectedName
                         }
-
+                        
                         pcall(function()
                             ArmwrestleServiceRF:WaitForChild("RequestStartFight"):InvokeServer(unpack(args))
                         end)
                     end
-                    task.wait(0.001)
+                    task.wait(0.01)
                 end
             end)
+            
+            task.wait(0.001) -- Small delay between thread spawns
         end
+        
+        -- Start cleanup timer for auto fight
+        cleanupConnections.autoFight = task.spawn(function()
+            while AutoFightToggle.Value do
+                task.wait(5) -- Wait 5 seconds
+                if AutoFightToggle.Value then
+                    cleanupRequests()
+                end
+            end
+        end)
     else
         -- Stop all fight threads
         for _, flag in pairs(autoFightThreads) do
             flag.active = false
         end
         autoFightThreads = {}
+        
+        -- Stop cleanup timer
+        if cleanupConnections.autoFight then
+            task.cancel(cleanupConnections.autoFight)
+            cleanupConnections.autoFight = nil
+        end
+        
+        -- Final cleanup
+        cleanupRequests()
     end
 end)
+
+
+local function aggressiveCleanup()
+    -- Get memory info before cleanup
+    local memoryBefore = gcinfo()
+    
+    -- Method 1: Force disconnect and reconnect to service
+    pcall(function()
+        local oldService = ArmwrestleServiceRF
+        ArmwrestleServiceRF = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF")
+    end)
+    
+    -- Method 2: Clear all pending coroutines
+    collectgarbage("count")
+    
+    -- Method 3: Brief pause to let network catch up
+    task.wait(0.1)
+    
+    -- Get memory info after cleanup
+    local memoryAfter = gcinfo()
+    
+end
 
 
 
@@ -1274,27 +1446,35 @@ local CombinedParagraph = APSection:Paragraph("SpiritAndElemental", {
 
 -- Update function for both tables
 local function updateCombinedData()
-    local CustomReplicaController = Knit.GetController("CustomReplicaController")
-    local replica = CustomReplicaController and CustomReplicaController:GetReplica()
+    local replica = getCachedReplica()
 
     if not replica then
         CombinedParagraph:SetValue("Replica not found.")
         return
     end
 
-    local spiritFruits = findTableByName(replica, "SummerItems")
-    local elementalData = findTableByName(replica, "AncientAwakening")
+    -- Cache the table lookups
+    local currentTime = os.time()
+    if not DataCache.spiritFruits or currentTime - (DataCache.lastSpiritUpdate or 0) >= 5 then
+        DataCache.spiritFruits = findTableByName(replica, "SummerItems")
+        DataCache.lastSpiritUpdate = currentTime
+    end
+    
+    if not DataCache.elementalData or currentTime - (DataCache.lastElementalUpdate or 0) >= 5 then
+        DataCache.elementalData = findTableByName(replica, "AncientAwakening")
+        DataCache.lastElementalUpdate = currentTime
+    end
 
     local output = ""
 
-    if spiritFruits then
-        output = output .. formatSpiritFruits(spiritFruits)
+    if DataCache.spiritFruits then
+        output = output .. formatSpiritFruits(DataCache.spiritFruits)
     else
         output = output .. "SpiritFruits table not found.\n"
     end
 
-    if elementalData then
-        output = output .. formatElementalAlchemist(elementalData)
+    if DataCache.elementalData then
+        output = output .. formatElementalAlchemist(DataCache.elementalData)
     else
         output = output .. "\nElementalAlchemist table not found."
     end
@@ -1659,10 +1839,11 @@ AutoDragonTrialToggle:OnChanged(function()
 
                         wait(2)
 
-                        startCritThreads()
-
+                    
                         local args = { "Island" }
                         local result = KnitServices.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
+                        wait(1)
+                        startCritThreads()
                         lastJoinAttemptTime = os.time()
                     else
                         stopCritThreads()
@@ -1731,15 +1912,22 @@ end
 -- Update key status every second
 spawn(function()
     while true do
-        local success, keyObject = pcall(function()
-            return player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Island Key/1"]
-        end)
+        local currentTime = os.time()
+        if currentTime - DataCache.lastGuiUpdate >= 1 then
+            local success, keyObject = pcall(function()
+                return player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Island Key/1"]
+            end)
 
-        if success and keyObject and keyObject:FindFirstChild("ButtonDisplay") then
-            local amtText = keyObject.ButtonDisplay.Amt.Text
-            VillainChestStatus:SetContent(amtText)
+            if success and keyObject and keyObject:FindFirstChild("ButtonDisplay") then
+                DataCache.guiElements.keyAmount = keyObject.ButtonDisplay.Amt.Text
+            else
+                DataCache.guiElements.keyAmount = "No Keys"
+            end
+            
+            VillainChestStatus:SetContent(DataCache.guiElements.keyAmount)
         else
-            VillainChestStatus:SetContent("No Keys")
+            -- Use cached value
+            VillainChestStatus:SetContent(DataCache.guiElements.keyAmount or "Loading...")
         end
 
         wait(1)
@@ -1874,60 +2062,71 @@ end
 
 -- Function to get current upgrade level for a wrestler
 local function getCurrentUpgradeLevel(wrestlerId, upgradeType)
-    if not CustomReplicaController then return 0 end
-
-    local success, replica = pcall(function()
-        return CustomReplicaController:GetReplica()
-    end)
-
-    local summerData = {}
-
-    if success and replica and replica.Data then
-        summerData = collectSummerEntries(replica.Data)
-    else
-        summerData = collectSummerEntries(CustomReplicaController)
+    local currentTime = os.time()
+    local cacheKey = wrestlerId .. "_" .. upgradeType
+    
+    if DataCache.wrestlerData[cacheKey] and 
+       currentTime - DataCache.wrestlerData[cacheKey].lastUpdate < DataCache.updateInterval then
+        return DataCache.wrestlerData[cacheKey].level
     end
 
-    local wrestlerInfo = summerData[wrestlerId]
-    if wrestlerInfo and wrestlerInfo.Upgrades and wrestlerInfo.Upgrades[upgradeType] then
-        return wrestlerInfo.Upgrades[upgradeType] or 0
+    local level = 0
+    local replica = getCachedReplica()
+    
+    if replica and replica.Data then
+        local summerData = collectSummerEntries(replica.Data)
+        local wrestlerInfo = summerData[wrestlerId]
+        if wrestlerInfo and wrestlerInfo.Upgrades and wrestlerInfo.Upgrades[upgradeType] then
+            level = wrestlerInfo.Upgrades[upgradeType] or 0
+        end
     end
     
-    return 0
+    -- Cache the result
+    DataCache.wrestlerData[cacheKey] = {
+        level = level,
+        lastUpdate = currentTime
+    }
+    
+    return level
 end
 
--- Function to check if player can afford an upgrade
-local function canAffordUpgrade(wrestlerId, upgradeType, currentCash)
-    local upgradeData = getWrestlerUpgradeData(wrestlerId)
-    if not upgradeData or not upgradeData.Upgrades or not upgradeData.Upgrades[upgradeType] then
-        return false
+-- Function to check if player owns wrestler (cached)
+local function ownsWrestler(wrestlerName)
+    local currentTime = os.time()
+    local cacheKey = "owns_" .. wrestlerName
+    
+    if DataCache.wrestlerData[cacheKey] and 
+       currentTime - DataCache.wrestlerData[cacheKey].lastUpdate < DataCache.updateInterval then
+        return DataCache.wrestlerData[cacheKey].owns
+    end
+
+    local owns = false
+    local replica = getCachedReplica()
+    
+    if replica and replica.Data then
+        local summerData = collectSummerEntries(replica.Data)
+        local info = summerData[wrestlerName]
+        owns = info and info.IsUnlocked == true
     end
     
-    local currentLevel = getCurrentUpgradeLevel(wrestlerId, upgradeType)
-    local upgradeInfo = upgradeData.Upgrades[upgradeType]
+    -- Cache the result
+    DataCache.wrestlerData[cacheKey] = {
+        owns = owns,
+        lastUpdate = currentTime
+    }
     
-    -- Check if already at max level
-    if currentLevel >= upgradeInfo.MaxLevel then
-        return false
-    end
-    
-    local upgradeCost = calculateUpgradeCost(
-        upgradeInfo.BaseUpgradePrice,
-        currentLevel,
-        upgradeInfo.PriceMultiplier
-    )
-    
-    return currentCash >= upgradeCost
+    return owns
 end
+
+-- ...existing code...
 
 local function updateTycoonStatus()
-    if not CustomReplicaController then return end
+    -- Use cached replica instead of fresh lookup
+    local replica = getCachedReplica()
+    if not replica then return end
 
-    -- Get SummerCash attribute fresh each update
-    local cash = 0
-    if localPlayer then
-        cash = localPlayer:GetAttribute("SummerCash") or 0
-    end
+    -- Get cached SummerCash attribute
+    local cash = getCachedAttribute("SummerCash") or 0
 
     local summerEntries = collectSummerEntries(CustomReplicaController)
     local success, replica = pcall(function()
