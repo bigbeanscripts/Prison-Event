@@ -1824,42 +1824,30 @@ AutoDragonTrialToggle:OnChanged(function()
     end
 end)
 
-
 local VillainChestSection = Tabs.Trial:AddSection("Island Chest")
 
+-- Paragraph to display current key amount
 local VillainChestStatus = VillainChestSection:Paragraph("Trial", {
     Title = "Island Chest Key Amount",
     Content = "Loading..."
 })
 
--- Parse 'K' values like 1.2K
+-- Parses values like "1.2K", "3.4M", or "250"
 local function parseAmount(amtText)
     local numStr = amtText:match("%d+%.?%d*")
-    if not numStr then return 0 end
-    
-    if amtText:find("K") or amtText:find("k") then
-        local baseNum = tonumber(numStr)
-        return baseNum and (baseNum * 1000) or 0
+    local baseNum = tonumber(numStr)
+    if not baseNum then return 0 end
+
+    if amtText:find("[Kk]") then
+        return baseNum * 1_000
+    elseif amtText:find("[Mm]") then
+        return baseNum * 1_000_000
     else
-        return tonumber(numStr) or 0
+        return baseNum
     end
 end
 
-local player = game.Players.LocalPlayer
-local screenGui = player.PlayerGui:WaitForChild("ScreenGui")
-local villainButton = screenGui:FindFirstChild("InvisibleVillainButton")
-if not villainButton then
-    villainButton = Instance.new("TextButton")
-    villainButton.Name = "InvisibleVillainButton"
-    villainButton.Size = UDim2.new(0, 200, 0, 50)
-    villainButton.Position = UDim2.new(0, 100, 0, 100)
-    villainButton.BackgroundTransparency = 1
-    villainButton.TextTransparency = 1
-    villainButton.ZIndex = -100
-    villainButton.Parent = screenGui
-end
-
--- Update key status every second
+-- Keep key amount status updated every second
 spawn(function()
     while true do
         local success, keyObject = pcall(function()
@@ -1867,20 +1855,20 @@ spawn(function()
         end)
 
         if success and keyObject and keyObject:FindFirstChild("ButtonDisplay") then
-            local amtText = keyObject.ButtonDisplay.Amt.Text
+            local amtText = keyObject.ButtonDisplay.Amt.Text or "0"
             VillainChestStatus:SetContent(amtText)
         else
             VillainChestStatus:SetContent("No Keys")
         end
 
-        wait(1)
+        task.wait(1)
     end
 end)
 
--- Auto open chest toggle
-local AutoOpenVillainChestToggle = VillainChestSection:AddToggle("AutoOpenVillainChest", {
+-- Auto open toggle
+local AutoOpenVillainChestToggle = VillainChestSection:AddToggle("AutoOpenIslandChest", {
     Title = "Auto Open Island Chest",
-    Description = "Automatically opens Island Chest if you have a key",
+    Description = "Automatically opens the Island Chest if you have a key.",
     Default = false
 })
 
@@ -1888,23 +1876,24 @@ AutoOpenVillainChestToggle:OnChanged(function()
     if AutoOpenVillainChestToggle.Value then
         spawn(function()
             while AutoOpenVillainChestToggle.Value do
-                local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Island Key/1"]
-                
-                if keyObject and keyObject:FindFirstChild("ButtonDisplay") then
-                    local amtText = keyObject.ButtonDisplay.Amt.Text
+                local success, keyObject = pcall(function()
+                    return player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Island Key/1"]
+                end)
+
+                if success and keyObject and keyObject:FindFirstChild("ButtonDisplay") then
+                    local amtText = keyObject.ButtonDisplay.Amt.Text or "0"
                     local amount = parseAmount(amtText)
 
                     if amount > 0 then
                         pcall(function()
-                            villainButton.MouseButton1Click:Fire()
+                            game:GetService("ReplicatedStorage")
+                                .Packages.Knit.Services.ChestService.RF.Open
+                                :InvokeServer("IslandChest")
                         end)
-
-                        local args = { "IslandChest" }
-                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ChestService.RF.Open:InvokeServer(unpack(args))
                     end
                 end
 
-                wait(0.1)
+                task.wait(0.2)
             end
         end)
     end
