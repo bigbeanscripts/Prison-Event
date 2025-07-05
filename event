@@ -1795,10 +1795,17 @@ AutoDragonTrialToggle:OnChanged(function()
 
                             if wasAutoFightOn and AutoFightToggle then
                                 AutoFightToggle:SetValue(true)
-                                wait(3)
+                                wait(1)
+                                AutoFightToggle:SetValue(false)
+                                wait(1)
+                                AutoFightToggle:SetValue(true)
                             end
                             
                             if wasAutoClickOn and AutoClickToggle then
+                                AutoClickToggle:SetValue(true)
+                                wait(1)
+                                AutoClickToggle:SetValue(false)     
+                                wait(1)
                                 AutoClickToggle:SetValue(true)
                                 wait(3)
                             end
