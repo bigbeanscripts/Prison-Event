@@ -449,6 +449,14 @@ local AutoFightToggle = Tabs.AutoFight:AddToggle("AutoFight", {
     Default = false
 })
 
+
+local notefight = Tabs.AutoFight:Paragraph("Note", {
+    Title = "Note",
+    Content = "If you get an error when you turn the toggles on, try turning them off and on again, this wont effect anything. Furthermore, the speeds in which you win, is further increased if you launch the script twice (Open it enable the toggles, disable them, and then re-execute the script.) ",
+    TitleAlignment = "Middle",
+    ContentAlignment = Enum.TextXAlignment.Left
+})
+
 -- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local KnitServices = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services")
