@@ -490,35 +490,18 @@ local AlwaysWin = Tabs.AutoFight:AddButton({
     Callback = function()
         local ReplicatedStorage = game:GetService("ReplicatedStorage")
         local ArmWrestleController = require(ReplicatedStorage.Controllers.Fighting.ArmWrestleController)
+        local RunService = game:GetService("RunService")
+        
+        -- Set NPCCps to 0 at all times
+        ArmWrestleController.NPCCps = 0
 
-        -- Store the original IncrementPower functi
-        local originalIncrementPower = ArmWrestleController.IncrementPower
-
-        -- Override the IncrementPower function
-        ArmWrestleController.IncrementPower = function(self, amount)
-            -- If NPC tries to reduce your power, block it
-            if amount < 0 then
-                return
+        RunService.Heartbeat:Connect(function()
+            if ArmWrestleController.NPCCps ~= 0 then
+                ArmWrestleController.NPCCps = 0
             end
-
-            -- Apply massive power to win instantly
-            return originalIncrementPower(self, math.huge)
-        end
-
-        -- Store the original MouseClick function
-        local originalMouseClick = ArmWrestleController.MouseClick
-
-        -- Override MouseClick to force high power on each click
-        ArmWrestleController.MouseClick = function(self, ...)
-            if self.Fighting and self.IsStarted then
-                self:IncrementPower(math.huge)
-            end
-
-            return originalMouseClick(self, ...)
-        end
+        end)
     end
 })
-
 
 local notefight = Tabs.AutoFight:Paragraph("Note", {
     Title = "Note",
@@ -528,7 +511,7 @@ local notefight = Tabs.AutoFight:Paragraph("Note", {
 })
 
 -- Services
-local KnitServices = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services")
+local KnitServices = game:GetService("ReplicatedStorage").Packages.Knit.Services
 local ArmwrestleServiceRF = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF")
 local ZoneService = KnitServices:WaitForChild("ZoneService"):WaitForChild("RE")
 
