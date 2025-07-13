@@ -845,37 +845,6 @@ AutoGhostFortuneToggle:OnChanged(function()
     end
 end)
 
-local WheelSection = Tabs.Wheel:AddSection("Fourth of July Wheel")
-
-local GhostFortuneSpinDropdown1 = Tabs.Wheel:AddDropdown("GhostFortuneSpinAmount", {
-    Title = "Spin Amount",
-    Description = "Select Wheel Spin Amount",
-    Values = {"1x", "3x", "10x"},
-    Multi = false,
-    Default = "1x"
-})
-
-local AutoGhostFortuneToggle = Tabs.Wheel:AddToggle("AutoGhostFortuneSpin", {
-    Title = "Auto spin July wheel",
-    Default = false
-})
-
-AutoGhostFortuneToggle:OnChanged(function()
-    if AutoGhostFortuneToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoGhostFortuneToggle.Value then break end
-                
-                local args = {
-                    [1] = "4th Of July Wheel",
-                    [2] = GhostFortuneSpinDropdown1.Value == "3x" and "x10" or GhostFortuneSpinDropdown1.Value == "10x" and "x25" or nil
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
-                wait(1)
-            end
-        end)
-    end
-end)
 
 
 -- Create SuperRB Section
