@@ -528,15 +528,51 @@ local notefight = Tabs.AutoFight:Paragraph("Note", {
 })
 
 -- Services
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local KnitServices = ReplicatedStorage:WaitForChild("Packages"):WaitForChild("Knit"):WaitForChild("Services")
 local ArmwrestleServiceRF = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF")
-
+local ZoneService = KnitServices:WaitForChild("ZoneService"):WaitForChild("RE")
 
 -- Variables
 local autoClickThreads = {}
 local autoFightThreads = {}
 local cleanupConnections = {}
+local lastZoneCheck = 0
+
+-- Function to teleport to the correct zone for an NPC
+local function teleportToNpcZone(npcName)
+    local player = game.Players.LocalPlayer
+    local playerCurrentZone = player:GetAttribute("CurrentZone")
+    
+    -- Find which zone the NPC is in
+    local npcZone = nil
+    for zoneName, path in pairs(npcLocations) do
+        if path:FindFirstChild(npcName) then
+            npcZone = zoneName == "OctpGames" and "OctoGames" or zoneName
+            break
+        end
+    end
+    
+    -- If NPC zone found and different from current zone, teleport
+    if npcZone and playerCurrentZone ~= npcZone then
+        -- Get the teleport destination
+        local teleportDest = workspace.Zones[npcZone].Interactables.Teleports.Locations.Spawn
+        
+        if teleportDest then
+            -- Teleport to the appropriate zone
+            local args = {
+                [1] = teleportDest
+            }
+            
+            ZoneService.teleport:FireServer(unpack(args))
+            
+            -- Wait for teleport to complete
+            task.wait(2.5)
+
+            return true
+        end
+    end
+    return npcZone ~= nil
+end
 
 -- Cleanup function to clear pending requests
 local function cleanupRequests()
@@ -628,6 +664,10 @@ end)
 -- Auto Fight toggle handler
 AutoFightToggle:OnChanged(function()
     if AutoFightToggle.Value then
+        -- First try to teleport to correct zone if needed
+        local selectedName = modelDropdown.Value
+        teleportToNpcZone(selectedName)
+        
         -- Stop previous threads and cleanup
         for _, flag in pairs(autoFightThreads) do
             flag.active = false
@@ -648,6 +688,14 @@ AutoFightToggle:OnChanged(function()
                 while threadFlag.active and AutoFightToggle.Value do
                     local selectedName = modelDropdown.Value
                     if selectedName then
+                        -- Check if we need to teleport (periodically)
+                        local currentTime = tick()
+                        if currentTime - lastZoneCheck > 10 then
+                            teleportToNpcZone(selectedName)
+                            lastZoneCheck = currentTime
+                        end
+                        
+                        -- Request fight with selected NPC
                         local args = {
                             [1] = selectedName
                         }
@@ -690,6 +738,14 @@ AutoFightToggle:OnChanged(function()
     end
 end)
 
+-- Add zone check when dropdown selection changes
+modelDropdown:OnChanged(function()
+    if AutoFightToggle.Value then
+        local selectedName = modelDropdown.Value
+        teleportToNpcZone(selectedName)
+        lastZoneCheck = tick()
+    end
+end)
 
 local function aggressiveCleanup()
     -- Get memory info before cleanup
@@ -710,7 +766,6 @@ local function aggressiveCleanup()
     -- Get memory info after cleanup
     local memoryAfter = gcinfo()  
 end
-
 
 local EggSection = Tabs.Eggs:AddSection("Eggs")
 
