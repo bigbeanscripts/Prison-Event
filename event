@@ -316,11 +316,11 @@ AutoTrainToggle:OnChanged(function()
                 -- Equip immediately
                 equipDumbells()
 
-                -- Click loop (every 0.1 seconds for faster gains)
+                -- Click loop (every 0.6 seconds for Dumbells)
                 spawn(function()
                     while AutoTrainToggle.Value and currentTrainingType == "Dumbells" and TrainingDropdown.Value == "Dumbells" do
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                        wait(0.1)
+                        wait(0.6)
                     end
                 end)
 
@@ -349,11 +349,11 @@ AutoTrainToggle:OnChanged(function()
                 -- Equip immediately
                 equipGrips()
 
-                -- Click loop (every 0.1 seconds for faster gains)
+                -- Click loop (every 0.6 seconds for Grips)
                 spawn(function()
                     while AutoTrainToggle.Value and currentTrainingType == "Grips" and TrainingDropdown.Value == "Grips" do
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                        wait(0.1)
+                        wait(0.6)
                     end
                 end)
 
@@ -382,11 +382,11 @@ AutoTrainToggle:OnChanged(function()
                 -- Equip immediately
                 equipBarbells()
 
-                -- Click loop (every 0.1 seconds for faster gains)
+                -- Click loop (every 1.55 seconds for Barbells)
                 spawn(function()
                     while AutoTrainToggle.Value and currentTrainingType == "Barbells" and TrainingDropdown.Value == "Barbells" do
                         game:GetService("ReplicatedStorage").Packages.Knit.Services.ToolService.RE.onClick:FireServer()
-                        wait(0.1)
+                        wait(1.55)
                     end
                 end)
 
@@ -397,6 +397,18 @@ AutoTrainToggle:OnChanged(function()
                         equipBarbells()
                     end
                 end
+            elseif currentTrainingType == "Pull up bar" then
+                -- Add Pull up bar handling
+                spawn(function()
+                    while AutoTrainToggle.Value and currentTrainingType == "Pull up bar" and TrainingDropdown.Value == "Pull up bar" do
+                        local statsArgs = {
+                            [1] = "17",
+                            [2] = "Tier4"
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.PullupBarService.RE.onGiveStats:FireServer(unpack(statsArgs))
+                        wait(1.55) -- Pull up bar every 1.55 seconds
+                    end
+                end)
             else -- PunchBags
                 spawn(function() 
                     local lastTeleport = 0
@@ -416,7 +428,7 @@ AutoTrainToggle:OnChanged(function()
                                 lastTeleport = currentTime
                             end
                             
-                            -- Use the punch bag service every 0.1 seconds for faster gains
+                            -- Use the punch bag service every 0.2 seconds for knuckles (punch bags)
                             local args = {
                                 [1] = validZone,
                                 [2] = tier,
@@ -424,7 +436,7 @@ AutoTrainToggle:OnChanged(function()
                             }
                             game:GetService("ReplicatedStorage").Packages.Knit.Services.PunchBagService.RE.onGiveStats:FireServer(unpack(args))
                         end
-                        wait(0.1)
+                        wait(0.2)
                     end
                 end)
             end
@@ -435,10 +447,8 @@ AutoTrainToggle:OnChanged(function()
     end
 end)
 
--- Listen for dropdown value changes to update currentTrainingType when needed
 TrainingDropdown:OnChanged(function()
     if AutoTrainToggle.Value then
-        -- If toggle is on, update current training and restart the training process
         AutoTrainToggle:Set(false) -- Turn off current training
         wait(0.1) -- Short delay to ensure loops are terminated
         AutoTrainToggle:Set(true) -- Turn on with new selection
