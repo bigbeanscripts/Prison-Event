@@ -32,6 +32,7 @@ local function getEggNames()
 
     table.insert(eggNames, "Guard") -- Add Guard manually
     table.insert(eggNames, "Octo") -- Add Octo manually
+    table.insert(eggNames, "CorruptOcto")
 
     table.sort(eggNames)
     return eggNames
@@ -63,6 +64,7 @@ local Tabs = {
     Eggs = Window:AddTab({ Title = "Eggs", Icon = "egg" }),
     Wheel = Window:AddTab({ Title = "Wheels", Icon = "ferris-wheel" }),
     Tower = Window:AddTab({ Title = "Tower", Icon = "castle" }),
+    Chests = Window:AddTab({ Title = "Chests", Icon = "phosphor-treasure-chest-bold" }),
     Merchant = Window:AddTab({ Title = "Merchant", Icon = "phosphor-shopping-cart-fill" }),
 }
 
@@ -110,7 +112,9 @@ end)
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
     
-    if player:GetAttribute("ZoneGlassBridge") then
+    if player:GetAttribute("ZoneFrontmanAttack") then
+        return "FrontmanAttack"
+    elseif player:GetAttribute("ZoneGlassBridge") then
         return "GlassBridge"
     elseif player:GetAttribute("ZonePentathlon") then
         return "Pentathlon"
@@ -119,6 +123,10 @@ local function GetCurrentZone()
     end
     
     -- Look through workspace as fallback
+
+    local frontmanZone = workspace.Zones:FindFirstChild("FrontmanAttack")
+    if frontmanZone then return frontmanZone.Name end
+
     local glassBridgeZone = workspace.Zones:FindFirstChild("GlassBridge")
     if glassBridgeZone then return glassBridgeZone.Name end
     
@@ -463,6 +471,7 @@ local npcLocations = {
     OctoGames = workspace.GameObjects.ArmWrestling.OctoGames.NPC,
     Pentathlon = workspace.GameObjects.ArmWrestling.Pentathlon.NPC,
     GlassBridge = workspace.GameObjects.ArmWrestling.GlassBridge.NPC,
+    FrontmanAttack = workspace.GameObjects.ArmWrestling.FrontmanAttack.NPC,
 }
 
 local modelNames = {}
@@ -547,7 +556,7 @@ local function teleportToNpcZone(npcName)
     local npcZone = nil
     for zoneName, path in pairs(npcLocations) do
         if path:FindFirstChild(npcName) then
-            npcZone = zoneName == "OctpGames" and "OctoGames" or zoneName
+            npcZone = zoneName == "OctoGames" and "OctoGames" or zoneName
             break
         end
     end
@@ -888,7 +897,39 @@ AutoGlassFortuneToggle:OnChanged(function()
     end
 end)
 
+local WheelSection2 = Tabs.Wheel:AddSection("Frontman Fortune Wheel")
 
+
+local FrontmanFortuneSpinDropdown = WheelSection2:AddDropdown("FrontmanFortuneSpinAmount", {
+    Title = "Spin Amount",
+    Description = "Select Wheel Spin Amount",
+    Values = {"1x", "3x", "10x"},
+    Multi = false,
+    Default = "1x"
+})
+
+local AutoFrontmanFortuneToggle = WheelSection2:AddToggle("AutoFrontmanFortuneSpin", {
+    Title = "Auto spin frontman fortune wheel",
+    Default = false
+})
+
+AutoFrontmanFortuneToggle:OnChanged(function()
+    if AutoFrontmanFortuneToggle.Value then
+        spawn(function()
+            while true do
+                if not AutoFrontmanFortuneToggle.Value then break end
+
+                local args = {
+                    [1] = "Frontman Fortune",
+                    [2] = FrontmanFortuneSpinDropdown.Value == "3x" and "x10" or FrontmanFortuneSpinDropdown.Value == "10x" and "x25" or nil
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
+
+                wait(1)
+            end
+        end)
+    end
+end)
 
 -- Create SuperRB Section
 local EventSection = Tabs.Merchant:AddSection("Individual Items")
@@ -941,6 +982,44 @@ AutoBuyToggle:OnChanged(function()
     end
 end)
 
+local FrontmanMerchantSection = Tabs.Merchant:AddSection("Frontman Merchant")
+
+local BlackMarketDropdown = Tabs.Merchant:AddDropdown("BlackMarketDropdown", {
+    Title = "Select Merchant Slot(s)",
+    Values = {1, 2, 3, 4, 5},
+    Multi = true,
+    Default = {}
+})
+
+local AutoBuyToggle = Tabs.Merchant:AddToggle("AutoBuyToggle", {
+    Title = "Auto Buy (Selected Slots)",
+    Default = false
+})
+
+AutoBuyToggle:OnChanged(function()
+    if AutoBuyToggle.Value then
+        spawn(function()
+            while true do
+                if not AutoBuyToggle.Value then break end
+                -- Buy 3 times
+                for i = 1, 3 do
+                    for number, isSelected in pairs(BlackMarketDropdown.Value) do
+                        if isSelected then
+                            local args = {
+                                [1] = "Frontman Merchant",
+                                [2] = number
+                            }
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(unpack(args))
+                            wait(1)
+                        end
+                    end
+                end
+                wait(30) -- Wait 30 seconds before next cycle
+            end
+        end)
+    end
+end)
+
 local TowerSection = Tabs.Tower:AddSection("Guard Tower")
 
 -- Prison Cave Buttons
@@ -967,6 +1046,127 @@ TowerSection:AddButton({
         game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
     end
 })
+
+local TreasureMapSection = Tabs.Chests:AddSection("Octo Chest")
+
+
+local OctoGemStatus = TreasureMapSection:Paragraph("GemStatus", {
+    Title = "Octo Gem Amount",
+    Content = "Loading..."
+})
+
+local OctoChestStatus = TreasureMapSection:Paragraph("ChestStatus", {
+    Title = "Octo Chest Amount",
+    Content = "Loading..."
+})
+
+
+local AutoCraftOctoToggle = TreasureMapSection:AddToggle("AutoCraftOcto", {
+    Title = "Auto Craft Octo Chests",
+    Description = "Automatically craft Octo Chests if you have 10+ Octo Gems.",
+    Default = false
+})
+
+local AutoUseOctoToggle = TreasureMapSection:AddToggle("AutoUseOcto", {
+    Title = "Auto Open Octo Chests",
+    Description = "Automatically open Octo Chests when available.",
+    Default = false
+})
+
+
+local function parseAmount(amtText)
+    local numStr = amtText:match("x(.+)")
+    if not numStr then return 0 end
+    if numStr:find("k") then
+        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
+        return baseNum and (baseNum * 1000) or 0
+    else
+        return tonumber(numStr) or 0
+    end
+end
+
+-- 🔁 Auto Craft Loop
+AutoCraftOctoToggle:OnChanged(function(enabled)
+    if enabled then
+        task.spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            while AutoCraftOctoToggle.Value do
+                player = game.Players.LocalPlayer
+                local amtObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.MiscStorage.Objects:FindFirstChild("Octo Chest Gem/1")
+                if amtObject then
+                    local amtText = amtObject.ButtonDisplay.Amt.Text
+                    local amount = parseAmount(amtText)
+                    OctoGemStatus:SetValue(amtText)
+
+                    if amount >= 10 then
+                        pcall(function()
+                            ReplicatedStorage.Packages.Knit.Services.TreasureChestService.RF.Craft:InvokeServer("Octo Chest")
+                        end)
+                    end
+                else
+                    OctoGemStatus:SetValue("Not Found")
+                end
+                task.wait(0.2)
+            end
+        end)
+    end
+end)
+
+-- 🔁 Auto Use Loop
+AutoUseOctoToggle:OnChanged(function(enabled)
+    if enabled then
+        task.spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            while AutoUseOctoToggle.Value do
+                player = game.Players.LocalPlayer
+                local chestObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.GiftsStorage.Objects:FindFirstChild("Octo Chest/1")
+                if chestObject then
+                    local amtText = chestObject.ButtonDisplay.Amt.Text
+                    local amount = parseAmount(amtText)
+                    OctoChestStatus:SetValue(amtText)
+
+                    if amount >= 1 then
+                        local args = {
+                            [1] = {
+                                ["Item"] = "Octo Chest",
+                                ["Tier"] = "1"
+                            },
+                            [2] = (amount >= 8) and 8 or 1
+                        }
+                        pcall(function()
+                            ReplicatedStorage.Packages.Knit.Services.ItemService.RF.UseChest:InvokeServer(unpack(args))
+                        end)
+                    end
+                end
+                task.wait(0.2)
+            end
+        end)
+    end
+end)
+
+-- 🔄 Passive Status Updater (even when toggles are off)
+task.spawn(function()
+    while true do
+        local gui = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame
+
+        local gem = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.MiscStorage.Objects:FindFirstChild("Octo Chest Gem/1")
+        if gem and gem:FindFirstChild("ButtonDisplay") and gem.ButtonDisplay:FindFirstChild("Amt") then
+            OctoGemStatus:SetValue(gem.ButtonDisplay.Amt.Text)
+        else
+            OctoGemStatus:SetValue("Not Found")
+        end
+
+        local chest = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.GiftsStorage.Objects:FindFirstChild("Octo Chest/1")
+        if chest and chest:FindFirstChild("ButtonDisplay") and chest.ButtonDisplay:FindFirstChild("Amt") then
+            OctoChestStatus:SetValue(chest.ButtonDisplay.Amt.Text)
+        else
+            OctoChestStatus:SetValue("Not Found")
+        end
+
+        task.wait(1)
+    end
+end)
+
 
 
 -- Hand the library over to our managers
