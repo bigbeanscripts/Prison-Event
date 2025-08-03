@@ -506,7 +506,7 @@ end)
 
 local AlwaysWin = Tabs.AutoFight:AddButton({
     Title = "Always Win",
-    Description = "This makes it impossible to lose, but it won't let you exit the fighting state. Use the Exit Fight button below if you want to stop fighting. You will also need to have auto click/crit enabled to win battles.",
+    Description = "This makes it impossible to lose, rejoining resets this.",
     Callback = function()
         coroutine.resume(coroutine.create(function()
             local armWrestle = require(game:GetService("ReplicatedStorage").Controllers.Fighting.ArmWrestleController)
