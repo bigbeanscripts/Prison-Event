@@ -30,10 +30,6 @@ local function getEggNames()
         table.insert(eggNames, name)
     end
 
-    table.insert(eggNames, "Guard") -- Add Guard manually
-    table.insert(eggNames, "Octo") -- Add Octo manually
-    table.insert(eggNames, "CorruptOcto")
-
     table.sort(eggNames)
     return eggNames
 end
@@ -64,7 +60,6 @@ local Tabs = {
     Eggs = Window:AddTab({ Title = "Eggs", Icon = "egg" }),
     Wheel = Window:AddTab({ Title = "Wheels", Icon = "ferris-wheel" }),
     Tower = Window:AddTab({ Title = "Tower", Icon = "castle" }),
-    Chests = Window:AddTab({ Title = "Chests", Icon = "phosphor-treasure-chest-bold" }),
     Merchant = Window:AddTab({ Title = "Merchant", Icon = "phosphor-shopping-cart-fill" }),
 }
 
@@ -111,30 +106,20 @@ end)
 
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
-    
-    if player:GetAttribute("ZoneFrontmanAttack") then
-        return "FrontmanAttack"
-    elseif player:GetAttribute("ZoneGlassBridge") then
-        return "GlassBridge"
-    elseif player:GetAttribute("ZonePentathlon") then
-        return "Pentathlon"
-    elseif player:GetAttribute("ZoneOctoGames") then
-        return "OctoGames"
+    if player:GetAttribute("ZoneTralalerosBeach") then
+        return "TralalerosBeach"
+    elseif player:GetAttribute("ZoneBrrBrrPatapimsForest") then
+        return "BrrBrrPatapimsForest"
     end
     
     -- Look through workspace as fallback
 
-    local frontmanZone = workspace.Zones:FindFirstChild("FrontmanAttack")
+    local frontmanZone = workspace.Zones:FindFirstChild("TralalerosBeach")
     if frontmanZone then return frontmanZone.Name end
 
-    local glassBridgeZone = workspace.Zones:FindFirstChild("GlassBridge")
+    local glassBridgeZone = workspace.Zones:FindFirstChild("BrrBrrPatapimsForest")
     if glassBridgeZone then return glassBridgeZone.Name end
     
-    local lostZone = workspace.Zones:FindFirstChild("Pentathlon")
-    if lostZone then return lostZone.Name end
-    
-    local summerZone = workspace.Zones:FindFirstChild("OctoGames")
-    if summerZone then return summerZone.Name end
     
     return nil
 end
@@ -180,13 +165,13 @@ end
 local function GetBestDuckBag()
     local player = game.Players.LocalPlayer
     local currentZone = GetValidZone(currentTrainingType)
-    local fallbackZone = "Pentathlon"
+    local fallbackZone = "BrrBrrPatapimsForest"
 
     if not currentZone then
         return "Tier1"
     end
 
-    local knuckleStrength = player:GetAttribute("TotalOctoKnuckles") or 0
+    local knuckleStrength = player:GetAttribute("TotalBrainrotKnuckles") or 0
     local punchBagData = require(game:GetService("ReplicatedStorage").Data.PunchBags)
 
     if player:GetAttribute("VIP") == true then
@@ -218,7 +203,7 @@ end
 local function GetBestDuckEquipment(equipmentType)
     local player = game.Players.LocalPlayer
     local currentZone = GetCurrentZone()
-    local fallbackZone = "Pentathlon"
+    local fallbackZone = "BrrBrrPatapimsForest"
 
     if not currentZone then
         return { equipment = fallbackZone .. "1", zone = fallbackZone }
@@ -227,9 +212,9 @@ local function GetBestDuckEquipment(equipmentType)
     -- Determine attribute and data module based on type
     local dataModule
     local attrMap = {
-        Dumbells = "TotalOctoBicep",
-        Grips = "TotalOctoGrip",
-        Barbells = "TotalOctoBicep"
+        Dumbells = "TotalBrainrotBicep",
+        Grips = "TotalBrainrotGrip",
+        Barbells = "TotalBrainrotBicep"
     }
 
     if equipmentType ~= "Dumbells" and equipmentType ~= "Grips" and equipmentType ~= "Barbells" then
@@ -468,10 +453,8 @@ end)
 local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 
 local npcLocations = {
-    OctoGames = workspace.GameObjects.ArmWrestling.OctoGames.NPC,
-    Pentathlon = workspace.GameObjects.ArmWrestling.Pentathlon.NPC,
-    GlassBridge = workspace.GameObjects.ArmWrestling.GlassBridge.NPC,
-    FrontmanAttack = workspace.GameObjects.ArmWrestling.FrontmanAttack.NPC,
+    BrrBrrPatapimsForest = workspace.GameObjects.ArmWrestling.BrrBrrPatapimsForest.NPC,
+    TralalerosBeach = workspace.GameObjects.ArmWrestling.TralalerosBeach.NPC,
 }
 
 local modelNames = {}
@@ -510,24 +493,52 @@ local AutoFightToggle = Tabs.AutoFight:AddToggle("AutoFight", {
     Default = false
 })
 
+-- Block the GameAnalyticsError remote event from firing (run once at startup)
+pcall(function()
+    local gameAnalyticsError = game:GetService("ReplicatedStorage"):FindFirstChild("GameAnalyticsError")
+    if gameAnalyticsError then
+        gameAnalyticsError.FireServer = function(self, ...)
+            return
+        end
+    end
+end)
+
+
 local AlwaysWin = Tabs.AutoFight:AddButton({
     Title = "Always Win",
-    Description = "This button will make it so NPCs can't fight back. To remove this, you will need to rejoin.",
+    Description = "This makes it impossible to lose, but it won't let you exit the fighting state. Use the Exit Fight button below if you want to stop fighting. You will also need to have auto click/crit enabled to win battles.",
     Callback = function()
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local ArmWrestleController = require(ReplicatedStorage.Controllers.Fighting.ArmWrestleController)
-        local RunService = game:GetService("RunService")
-        
-        -- Set NPCCps to 0 at all times
-        ArmWrestleController.NPCCps = 0
-
-        RunService.Heartbeat:Connect(function()
-            if ArmWrestleController.NPCCps ~= 0 then
-                ArmWrestleController.NPCCps = 0
+        coroutine.resume(coroutine.create(function()
+            local armWrestle = require(game:GetService("ReplicatedStorage").Controllers.Fighting.ArmWrestleController)
+            
+            -- Method 1: Hook the IncrementPower function
+            local originalIncrementPower = armWrestle.IncrementPower
+            armWrestle.IncrementPower = function(self, amount)
+                -- Always increment by a large positive amount
+                originalIncrementPower(self, math.abs(amount or 1) * 1000)
             end
-        end)
+            
+            -- Method 2: Continuously set health to max (more reliable)
+            spawn(function()
+                while armWrestle.Fighting do
+                    if armWrestle.Health and armWrestle.MaxHealth then
+                        armWrestle.Health = armWrestle.MaxHealth
+                    end
+                    wait(0.1)
+                end
+            end)
+            
+            -- Method 3: Override the UpdateFight function to prevent NPC power
+            local originalUpdateFight = armWrestle.UpdateFight
+            armWrestle.UpdateFight = function(self)
+                -- Do nothing - prevents NPC from gaining power
+            end
+            
+        end))
     end
 })
+
+
 
 local notefight = Tabs.AutoFight:Paragraph("Note", {
     Title = "Note",
@@ -556,7 +567,7 @@ local function teleportToNpcZone(npcName)
     local npcZone = nil
     for zoneName, path in pairs(npcLocations) do
         if path:FindFirstChild(npcName) then
-            npcZone = zoneName == "OctoGames" and "OctoGames" or zoneName
+            npcZone = zoneName == "BrrBrrPatapimsForest" and "BrrBrrPatapimsForest" or zoneName
             break
         end
     end
@@ -830,8 +841,7 @@ AutoHatchToggle:OnChanged(function()
 end)
 
 
-
-local WheelSection = Tabs.Wheel:AddSection("Guard Fortune Wheel")
+local WheelSection = Tabs.Wheel:AddSection("Tralalero Fortune Wheel")
 
 local GhostFortuneSpinDropdown = Tabs.Wheel:AddDropdown("GhostFortuneSpinAmount", {
     Title = "Spin Amount",
@@ -842,7 +852,7 @@ local GhostFortuneSpinDropdown = Tabs.Wheel:AddDropdown("GhostFortuneSpinAmount"
 })
 
 local AutoGhostFortuneToggle = Tabs.Wheel:AddToggle("AutoGhostFortuneSpin", {
-    Title = "Auto spin guard fortune wheel",
+    Title = "Auto spin Tralalero Fortune wheel",
     Default = false
 })
 
@@ -853,7 +863,7 @@ AutoGhostFortuneToggle:OnChanged(function()
                 if not AutoGhostFortuneToggle.Value then break end
                 
                 local args = {
-                    [1] = "Guard Fortune",
+                    [1] = "Tralalero Fortune",
                     [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
                 }
                 game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
@@ -864,171 +874,16 @@ AutoGhostFortuneToggle:OnChanged(function()
     end
 end)
 
-local WheelSection1 = Tabs.Wheel:AddSection("Glass Fortune Wheel")
+local TowerSection = Tabs.Tower:AddSection("Brainrot Tower")
 
-local GlassFortuneSpinDropdown = Tabs.Wheel:AddDropdown("GlassFortuneSpinAmount", {
-    Title = "Spin Amount",
-    Description = "Select Wheel Spin Amount",
-    Values = {"1x", "3x", "10x"},
-    Multi = false,
-    Default = "1x"
-})
-
-local AutoGlassFortuneToggle = Tabs.Wheel:AddToggle("AutoGlassFortuneSpin", {
-    Title = "Auto spin glass fortune wheel",
-    Default = false
-})
-
-AutoGlassFortuneToggle:OnChanged(function()
-    if AutoGlassFortuneToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoGlassFortuneToggle.Value then break end
-
-                local args = {
-                    [1] = "Glass Fortune",
-                    [2] = GlassFortuneSpinDropdown.Value == "3x" and "x10" or GlassFortuneSpinDropdown.Value == "10x" and "x25" or nil
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
-                
-                wait(1)
-            end
-        end)
-    end
-end)
-
-local WheelSection2 = Tabs.Wheel:AddSection("Frontman Fortune Wheel")
-
-
-local FrontmanFortuneSpinDropdown = WheelSection2:AddDropdown("FrontmanFortuneSpinAmount", {
-    Title = "Spin Amount",
-    Description = "Select Wheel Spin Amount",
-    Values = {"1x", "3x", "10x"},
-    Multi = false,
-    Default = "1x"
-})
-
-local AutoFrontmanFortuneToggle = WheelSection2:AddToggle("AutoFrontmanFortuneSpin", {
-    Title = "Auto spin frontman fortune wheel",
-    Default = false
-})
-
-AutoFrontmanFortuneToggle:OnChanged(function()
-    if AutoFrontmanFortuneToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoFrontmanFortuneToggle.Value then break end
-
-                local args = {
-                    [1] = "Frontman Fortune",
-                    [2] = FrontmanFortuneSpinDropdown.Value == "3x" and "x10" or FrontmanFortuneSpinDropdown.Value == "10x" and "x25" or nil
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
-
-                wait(1)
-            end
-        end)
-    end
-end)
-
--- Create SuperRB Section
-local EventSection = Tabs.Merchant:AddSection("Individual Items")
-
--- Add Load Script Button
-EventSection:AddButton({
-    Title = "Load better Merchant script",
-    Description = "This allows you to select individual items, but causes more lag.",
-    Callback = function()
-        loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/SeperateMerchant/refs/heads/main/LessLag"))()
-    end
-})
-
-
-local MerchantSection = Tabs.Merchant:AddSection("Hidden Merchant")
-
-local BlackMarketDropdown = Tabs.Merchant:AddDropdown("BlackMarketDropdown", {
-    Title = "Select Merchant Slot(s)",
-    Values = {1, 2, 3, 4, 5},
-    Multi = true,
-    Default = {}
-})
-
-local AutoBuyToggle = Tabs.Merchant:AddToggle("AutoBuyToggle", {
-    Title = "Auto Buy (Selected Slots)",
-    Default = false
-})
-
-AutoBuyToggle:OnChanged(function()
-    if AutoBuyToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoBuyToggle.Value then break end
-                -- Buy 3 times
-                for i = 1, 3 do
-                    for number, isSelected in pairs(BlackMarketDropdown.Value) do
-                        if isSelected then
-                            local args = {
-                                [1] = "Hidden Merchant",
-                                [2] = number
-                            }
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(unpack(args))
-                            wait(1)
-                        end
-                    end
-                end
-                wait(30) -- Wait 30 seconds before next cycle
-            end
-        end)
-    end
-end)
-
-local FrontmanMerchantSection = Tabs.Merchant:AddSection("Frontman Merchant")
-
-local BlackMarketDropdown = Tabs.Merchant:AddDropdown("BlackMarketDropdown", {
-    Title = "Select Merchant Slot(s)",
-    Values = {1, 2, 3, 4, 5},
-    Multi = true,
-    Default = {}
-})
-
-local AutoBuyToggle = Tabs.Merchant:AddToggle("AutoBuyToggle", {
-    Title = "Auto Buy (Selected Slots)",
-    Default = false
-})
-
-AutoBuyToggle:OnChanged(function()
-    if AutoBuyToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoBuyToggle.Value then break end
-                -- Buy 3 times
-                for i = 1, 3 do
-                    for number, isSelected in pairs(BlackMarketDropdown.Value) do
-                        if isSelected then
-                            local args = {
-                                [1] = "Frontman Merchant",
-                                [2] = number
-                            }
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(unpack(args))
-                            wait(1)
-                        end
-                    end
-                end
-                wait(30) -- Wait 30 seconds before next cycle
-            end
-        end)
-    end
-end)
-
-local TowerSection = Tabs.Tower:AddSection("Guard Tower")
 
 -- Prison Cave Buttons
 TowerSection:AddButton({
-    Title = "Use Guard Tower Keys (1x)",
-    Description = "Use the Guard Tower Keys once.",
+    Title = "Use Brainrot Keys (1x)",
+    Description = "Use the Brainrot Key once.",
     Callback = function()
         local args = {
-            [1] = "GuardTower",
+            [1] = "BrainrotTower",
             [2] = false
         }
         game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
@@ -1036,136 +891,113 @@ TowerSection:AddButton({
 })
 
 TowerSection:AddButton({
-    Title = "Use All Guard Tower Keys (250x)",
-    Description = "Use All Guard Tower Keys (max 250 at a time).",
+    Title = "Use All Brainrot Keys (250x)",
+    Description = "Use All Brainrot Keys (max 250 at a time).",
     Callback = function()
         local args = {
-            [1] = "GuardTower",
+            [1] = "BrainrotTower",
             [2] = true
         }
         game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
     end
 })
 
-local TreasureMapSection = Tabs.Chests:AddSection("Octo Chest")
 
 
-local OctoGemStatus = TreasureMapSection:Paragraph("GemStatus", {
-    Title = "Octo Gem Amount",
-    Content = "Loading..."
+
+local MerchantSection = Tabs.Merchant:AddSection("Brainrot Market")
+
+-- Dropdown for selecting items
+local DuckShopDropdown = Tabs.Merchant:AddDropdown("DuckShopDropdown", {
+    Title = "Select Shop Item(s)",
+    Values = {
+        "Banana",
+        "Raspberry",
+        "Training Potion 1",
+        "Training Potion 2",
+        "Brainrot Season Egg",
+        "Exclusive Party Egg",
+        "Tralalero Medal",
+        "Training Potion 3",
+        "Pet Equips",
+        "Lucky 7 Enchantment"
+    },
+    Multi = true,
+    Default = {}
 })
 
-local OctoChestStatus = TreasureMapSection:Paragraph("ChestStatus", {
-    Title = "Octo Chest Amount",
-    Content = "Loading..."
-})
+-- Variable to store selected items
+local selectedShopItems = {}
 
-
-local AutoCraftOctoToggle = TreasureMapSection:AddToggle("AutoCraftOcto", {
-    Title = "Auto Craft Octo Chests",
-    Description = "Automatically craft Octo Chests if you have 10+ Octo Gems.",
-    Default = false
-})
-
-local AutoUseOctoToggle = TreasureMapSection:AddToggle("AutoUseOcto", {
-    Title = "Auto Open Octo Chests",
-    Description = "Automatically open Octo Chests when available.",
-    Default = false
-})
-
-
-local function parseAmount(amtText)
-    local numStr = amtText:match("x(.+)")
-    if not numStr then return 0 end
-    if numStr:find("k") then
-        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
-        return baseNum and (baseNum * 1000) or 0
-    else
-        return tonumber(numStr) or 0
-    end
-end
-
--- 🔁 Auto Craft Loop
-AutoCraftOctoToggle:OnChanged(function(enabled)
-    if enabled then
-        task.spawn(function()
-            local ReplicatedStorage = game:GetService("ReplicatedStorage")
-            while AutoCraftOctoToggle.Value do
-                player = game.Players.LocalPlayer
-                local amtObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.MiscStorage.Objects:FindFirstChild("Octo Chest Gem/1")
-                if amtObject then
-                    local amtText = amtObject.ButtonDisplay.Amt.Text
-                    local amount = parseAmount(amtText)
-                    OctoGemStatus:SetValue(amtText)
-
-                    if amount >= 10 then
-                        pcall(function()
-                            ReplicatedStorage.Packages.Knit.Services.TreasureChestService.RF.Craft:InvokeServer("Octo Chest")
-                        end)
-                    end
-                else
-                    OctoGemStatus:SetValue("Not Found")
-                end
-                task.wait(0.2)
-            end
-        end)
-    end
+-- Set the callback for the dropdown
+DuckShopDropdown:OnChanged(function(value)
+    selectedShopItems = value
 end)
 
--- 🔁 Auto Use Loop
-AutoUseOctoToggle:OnChanged(function(enabled)
-    if enabled then
-        task.spawn(function()
-            local ReplicatedStorage = game:GetService("ReplicatedStorage")
-            while AutoUseOctoToggle.Value do
-                player = game.Players.LocalPlayer
-                local chestObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.GiftsStorage.Objects:FindFirstChild("Octo Chest/1")
-                if chestObject then
-                    local amtText = chestObject.ButtonDisplay.Amt.Text
-                    local amount = parseAmount(amtText)
-                    OctoChestStatus:SetValue(amtText)
+-- Item slot mapping
+local itemSlots = {
+    ["Banana"] = 1,
+    ["Raspberry"] = 2,
+    ["Training Potion 1"] = 3,
+    ["Training Potion 2"] = 4,
+    ["Brainrot Season Egg"] = 5,
+    ["Exclusive Party Egg"] = 6,
+    ["Tralalero Medal"] = 7,
+    ["Training Potion 3"] = 8,
+    ["Pet Equips"] = 8,
+    ["Lucky 7 Enchantment"] = 9,
+} 
+-- Buy quantities
+local buyQuantities = {
+    ["Banana"] = 100,
+    ["Raspberry"] = 50,
+    ["Training Potion 1"] = 15,
+    ["Training Potion 2"] = 25,
+    ["Brainrot Season Egg"] = 10,
+    ["Exclusive Party Egg"] = 3,
+    ["Tralalero Medal"] = 1,
+    ["Training Potion 3"] = 3,
+    ["Pet Equips"] = 1,
+    ["Lucky 7 Enchantment"] = 1,
+}
 
-                    if amount >= 1 then
+-- Buy All (Selected) button
+local BuyAllButton = Tabs.Merchant:AddButton({
+    Title = "Buy All (Selected)",
+    Description = "Once Clicked you can't stop it. Make sure to click this is you are sure you want to buy all selected items.",
+    Callback = function()
+        task.spawn(function()
+            -- Check if any items are selected
+            if not selectedShopItems or not next(selectedShopItems) then
+                return
+            end
+            
+            for itemName, isSelected in pairs(selectedShopItems) do
+                if isSelected then -- Make sure the item is actually selected
+                    local slotNumber = itemSlots[itemName]
+                    local quantity = buyQuantities[itemName]
+
+                    if slotNumber and quantity then
                         local args = {
-                            [1] = {
-                                ["Item"] = "Octo Chest",
-                                ["Tier"] = "1"
-                            },
-                            [2] = (amount >= 8) and 8 or 1
+                            [1] = "BrainrotMarket",
+                            [2] = slotNumber
                         }
-                        pcall(function()
-                            ReplicatedStorage.Packages.Knit.Services.ItemService.RF.UseChest:InvokeServer(unpack(args))
-                        end)
+
+                        for i = 1, quantity do
+                            pcall(function()
+                                game:GetService("ReplicatedStorage").Packages.Knit.Services.ItemShopService.RF.Buy:InvokeServer(unpack(args))
+                            end)
+                            task.wait(0.25)
+                        end
+
+                        task.wait(1) -- small delay between items
                     end
                 end
-                task.wait(0.2)
             end
         end)
     end
-end)
+})
 
--- 🔄 Passive Status Updater (even when toggles are off)
-task.spawn(function()
-    while true do
-        local gui = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame
-
-        local gem = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.MiscStorage.Objects:FindFirstChild("Octo Chest Gem/1")
-        if gem and gem:FindFirstChild("ButtonDisplay") and gem.ButtonDisplay:FindFirstChild("Amt") then
-            OctoGemStatus:SetValue(gem.ButtonDisplay.Amt.Text)
-        else
-            OctoGemStatus:SetValue("Not Found")
-        end
-
-        local chest = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.GiftsStorage.Objects:FindFirstChild("Octo Chest/1")
-        if chest and chest:FindFirstChild("ButtonDisplay") and chest.ButtonDisplay:FindFirstChild("Amt") then
-            OctoChestStatus:SetValue(chest.ButtonDisplay.Amt.Text)
-        else
-            OctoChestStatus:SetValue("Not Found")
-        end
-
-        task.wait(1)
-    end
-end)
 
 
 
@@ -1194,3 +1026,5 @@ Window:SelectTab("Settings")
 -- You can use the SaveManager:LoadAutoloadConfig() to load a config
 -- which has been marked to be one that auto loads!
 SaveManager:LoadAutoloadConfig()
+
+
