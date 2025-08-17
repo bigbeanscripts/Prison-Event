@@ -107,7 +107,9 @@ end)
 
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
-    if player:GetAttribute("ZoneLaVacasFrozenLake") then
+    if player:GetAttribute("ZoneBrainrotSpaceStation") then
+        return "BrainrotSpaceStation"
+    elseif player:GetAttribute("ZoneLaVacasFrozenLake") then
         return "LaVacasFrozenLake"
     elseif player:GetAttribute("ZoneTralalerosBeach") then
         return "TralalerosBeach"
@@ -459,6 +461,7 @@ local npcLocations = {
     BrrBrrPatapimsForest = workspace.GameObjects.ArmWrestling.BrrBrrPatapimsForest.NPC,
     TralalerosBeach = workspace.GameObjects.ArmWrestling.TralalerosBeach.NPC,
     LaVacasFrozenLake = workspace.GameObjects.ArmWrestling.LaVacasFrozenLake.NPC,
+    BrainrotSpaceStation = workspace.GameObjects.ArmWrestling.BrainrotSpaceStation.NPC,
 }
 
 local modelNames = {}
@@ -878,6 +881,40 @@ AutoGhostFortuneToggle:OnChanged(function()
     end
 end)
 
+local WheelSection = Tabs.Wheel:AddSection("Space Fortune Wheel")
+
+local GhostFortuneSpinDropdown1= Tabs.Wheel:AddDropdown("GhostFortuneSpinAmount", {
+    Title = "Spin Amount",
+    Description = "Select Wheel Spin Amount",
+    Values = {"1x", "3x", "10x"},
+    Multi = false,
+    Default = "1x"
+})
+
+local AutoGhostFortuneToggle1= Tabs.Wheel:AddToggle("AutoGhostFortuneSpin", {
+    Title = "Auto spin Space Fortune wheel",
+    Default = false
+})
+
+AutoGhostFortuneToggle1:OnChanged(function()
+    if AutoGhostFortuneToggle1.Value then
+        spawn(function()
+            while true do
+                if not AutoGhostFortuneToggle1.Value then break end
+
+                local args = {
+                    [1] = "Space Fortune",
+                    [2] = GhostFortuneSpinDropdown1.Value == "3x" and "x10" or GhostFortuneSpinDropdown1.Value == "10x" and "x25" or nil
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
+                
+                wait(1)
+            end
+        end)
+    end
+end)
+
+
 local TowerSection = Tabs.Tower:AddSection("Brainrot Tower")
 
 
@@ -905,6 +942,35 @@ TowerSection:AddButton({
         game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
     end
 })
+
+local TowerSection1 = Tabs.Tower:AddSection("Space Tower")
+
+
+-- Prison Cave Buttons
+TowerSection1:AddButton({
+    Title = "Use Space Key (1x)",
+    Description = "Use the Space Key once.",
+    Callback = function()
+        local args = {
+            [1] = "SpaceTower",
+            [2] = false
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+TowerSection1:AddButton({
+    Title = "Use All Space Keys (250x)",
+    Description = "Use All Space Keys (max 250 at a time).",
+    Callback = function()
+        local args = {
+            [1] = "SpaceTower",
+            [2] = true
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
 
 
 
