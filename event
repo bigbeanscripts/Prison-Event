@@ -1089,16 +1089,13 @@ local function StartMineResetMonitoring()
         if shouldPause and not isMinePaused then
             -- Pause mining due to imminent reset
             isMinePaused = true
-            print("Mining paused: Mine reset imminent")
         elseif not shouldPause and isMinePaused then
             -- Resume mining after reset
             isMinePaused = false
-            print("Mining resumed: Mine reset complete")
         end
         
         if hasReset then
             -- Mine has just reset, recalculate everything
-            print("Mine has reset - recalculating targets")
             if targetBlockMiningEnabled then
                 StartTargetBlockMining()
             elseif miningEnabled then
@@ -1187,32 +1184,65 @@ local function StartMining()
         end
     end)
 end
-
--- NEW: Independent path mining loop (Mine Along the Way)
+-- Improved path mining loop (Mine Along the Way)
 local pathMiningConnection
+local currentPathBlockIndex = 1  -- Track which block type we're currently targeting
+local blockTypeCounts = {}  -- Track count of each block type found
+
 local function StartPathMining()
     if pathMiningConnection then
         pathMiningConnection:Disconnect()
     end
 
     pathMiningConnection = RunService.Heartbeat:Connect(function()
-        if not mineAlongPath or isMinePaused then return end
+        if not mineAlongPath or isMinePaused or #pathMiningBlocks == 0 then return end
         
         if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
             blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
             if not blocksFolder then return end
         end
 
+        -- Get the current target block type
+        local currentTarget = pathMiningBlocks[currentPathBlockIndex]
+        
+        -- Count blocks of current target type
+        local foundCount = 0
+        local foundBlock = false
+        
+        -- First pass: Count blocks of current type
         for _, block in ipairs(blocksFolder:GetChildren()) do
             local blockName = string.lower(block.Name)
-            for _, targetName in ipairs(pathMiningBlocks) do
-                if string.find(blockName, string.lower(targetName)) then
-                    if BlockExists(block) then
-                        MiningService:MineBlock(block):andThen(function() end)
-                    end
-                    return -- mine one block per frame
+            if string.find(blockName, string.lower(currentTarget)) and BlockExists(block) then
+                foundCount = foundCount + 1
+            end
+        end
+        
+        -- Store the count for debugging
+        blockTypeCounts[currentTarget] = foundCount
+        
+        -- Second pass: Mine a block if found
+        if foundCount > 0 then
+            for _, block in ipairs(blocksFolder:GetChildren()) do
+                local blockName = string.lower(block.Name)
+                if string.find(blockName, string.lower(currentTarget)) and BlockExists(block) then
+                    MiningService:MineBlock(block):andThen(function() end)
+                    foundBlock = true
+                    break -- Mine one block per frame
                 end
             end
+        end
+        
+        -- If no blocks of current type found, move to next type
+        if foundCount == 0 then
+            local previousTarget = currentTarget
+            currentPathBlockIndex = currentPathBlockIndex + 1
+            
+            -- If we've gone through all types, start over from the first
+            if currentPathBlockIndex > #pathMiningBlocks then
+                currentPathBlockIndex = 1
+            end
+            
+            local newTarget = pathMiningBlocks[currentPathBlockIndex]
         end
     end)
 end
@@ -1332,6 +1362,7 @@ local pathMiningDropdown = Tabs.Mining:AddDropdown("PathMiningBlocks", {
     Searchable = true
 })
 
+-- Add this to the pathMiningDropdown:OnChanged function
 pathMiningDropdown:OnChanged(function(value)
     pathMiningBlocks = {}
     for block, selected in pairs(value) do
@@ -1339,7 +1370,27 @@ pathMiningDropdown:OnChanged(function(value)
             table.insert(pathMiningBlocks, block)
         end
     end
+    
+    -- Reset to first block type when selection changes
+    currentPathBlockIndex = 1
 end)
+
+-- Add this to the hasReset check in StartMineResetMonitoring
+if hasReset then
+    -- Reset path mining index when mine resets
+    currentPathBlockIndex = 1
+    if targetBlockMiningEnabled then
+        StartTargetBlockMining()
+    elseif miningEnabled then
+        StartMining()
+    end
+    
+    -- Toggle transparency off and back on if needed
+    if blocksTransparent then
+        ToggleBlockTransparency(false)
+        ToggleBlockTransparency(true)
+    end
+end
 
 local pathMiningToggle = Tabs.Mining:AddToggle("PathMining", {
     Title = "Mine Along the Way",
