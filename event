@@ -440,9 +440,9 @@ end)
 
 TrainingDropdown:OnChanged(function()
     if AutoTrainToggle.Value then
-        AutoTrainToggle:Set(false) -- Turn off current training
+        AutoTrainToggle:SetValue(false) -- Turn off current training
         wait(0.1) -- Short delay to ensure loops are terminated
-        AutoTrainToggle:Set(true) -- Turn on with new selection
+        AutoTrainToggle:SetValue(true) -- Turn on with new selection
     end
 end)
 
@@ -940,15 +940,25 @@ local lastCheckedTime = 0
 local mineResetThreshold = 5 -- Stop mining when timer is under 5s
 local mineRestartThreshold = 19 * 60 + 57 -- Restart mining when timer is under 19m 57s
 
--- Function to parse the timer text to seconds
 local function ParseTimerText(timerText)
-    -- Timer format: "MM:SS"
+    if not timerText then return 0 end
+
+    -- "MM:SS" format
     local minutes, seconds = timerText:match("(%d+):(%d+)")
     if minutes and seconds then
         return tonumber(minutes) * 60 + tonumber(seconds)
     end
+
+    -- "Xm Ys" format
+    local m, s = timerText:match("(%d+)m%s*(%d+)s")
+    if m and s then
+        return tonumber(m) * 60 + tonumber(s)
+    end
+
+    -- Fallback to 0 if parsing fails
     return 0
 end
+
 
 -- Extract all block names from the module, preserve order from LayerInfo
 local function ExtractBlockNames()
@@ -1000,33 +1010,26 @@ local targetBlockMiningConnection
 local pathMiningBlocks = {}
 local mineAlongPath = false
 
--- Function to check if mining should be paused due to reset timer
 local function CheckMineReset()
     if not timeLeftLabel then 
         timeLeftLabel = workspace.Zones.MinersDreamland.Interactables.Mining.MineSpawn.Attachment.BillboardGui.TimeLeft
         if not timeLeftLabel then return false end
     end
-    
-    local timeText = timeLeftLabel.Text
-    if not timeText or timeText == "" then return false end
-    
-    local secondsLeft = ParseTimerText(timeText)
-    lastCheckedTime = secondsLeft
-    
-    -- If timer is below threshold, pause mining
+
+    local secondsLeft = ParseTimerText(timeLeftLabel.Text)
+
+    -- Pause mining if below threshold
     if secondsLeft <= mineResetThreshold then
         return true
     end
-    
-    -- If timer just passed the restart threshold (mine has reset)
-    if secondsLeft <= mineRestartThreshold and not isMinePaused then
-        -- Signal that we need to recalculate best blocks after mine reset
+
+    -- Resume mining if mine was paused and timer is above threshold
+    if secondsLeft > mineResetThreshold and isMinePaused then
         return false, true
     end
-    
+
     return false
 end
-
 
 -- Fix for transparency disconnect error
 
@@ -1288,18 +1291,6 @@ local miningToggle = Tabs.Mining:AddToggle("MiningToggle", {
     Default = false
 })
 
-miningToggle:OnChanged(function(value)
-    miningEnabled = value
-    if value then
-        if targetBlockMiningEnabled then
-            targetMiningToggle:Set(false)
-        end
-        StartMining()
-    elseif miningConnection then
-        miningConnection:Disconnect()
-        miningConnection = nil
-    end
-end)
 
 local blockDropdown = Tabs.Mining:AddDropdown("BlockSelection", {
     Title = "Select Blocks to Mine",
@@ -1376,12 +1367,25 @@ targetMiningToggle:OnChanged(function(value)
     targetBlockMiningEnabled = value
     if value then
         if miningEnabled then
-            miningToggle:Set(false)
+            miningToggle:SetValue(false)
         end
         StartTargetBlockMining()
     elseif targetBlockMiningConnection then
         targetBlockMiningConnection:Disconnect()
         targetBlockMiningConnection = nil
+    end
+end)
+
+miningToggle:OnChanged(function(value)
+    miningEnabled = value
+    if value then
+        if targetBlockMiningEnabled then
+            targetMiningToggle:SetValue(false)
+        end
+        StartMining()
+    elseif miningConnection then
+        miningConnection:Disconnect()
+        miningConnection = nil
     end
 end)
 
