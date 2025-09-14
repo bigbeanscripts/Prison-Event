@@ -1431,6 +1431,561 @@ end)
 
 StartMineResetMonitoring()
 
+local Inventory = Tabs.Mining:AddSection("Auto Sell")
+
+-- Add cooldown input with default value of 10
+local sellCooldownInput = Inventory:AddInput("SellCooldown", {
+    Title = "Sell Cooldown (seconds)",
+    Default = "10",
+    Placeholder = "Enter cooldown in seconds",
+    Numeric = true, -- Only allow numbers
+    Finished = false, -- Call callback when user is done typing
+    Callback = function(Value) end
+})
+
+-- Add Auto Sell toggle
+local autoSellToggle = Inventory:AddToggle("AutoSell", {
+    Title = "Auto Sell",
+    Description = "Automatically sells your mining inventory on the specified cooldown",
+    Default = false
+})
+
+-- Auto Sell toggle handler
+autoSellToggle:OnChanged(function()
+    if autoSellToggle.Value then
+        spawn(function()
+            while autoSellToggle.Value do
+                -- Sell inventory
+                pcall(function()
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.OreMarketService.RF.SellInventory:InvokeServer()
+                end)
+                
+                -- Wait for cooldown (with a safety check for non-numeric input)
+                local cooldown = tonumber(sellCooldownInput.Value) or 10
+                if cooldown < 1 then cooldown = 1 end -- Minimum 1 second cooldown
+                wait(cooldown)
+            end
+        end)
+    end
+end)
+-- Add Pickaxe Purchase Section
+local PickaxeSection = Tabs.Mining:AddSection("Pickaxe Purchase")
+
+-- Function to format numbers
+local function formatNumber(num)
+    if not num or type(num) ~= "number" then return "0" end
+    
+    if num >= 1e15 then
+        return string.format("%.2fQ", num / 1e15)
+    elseif num >= 1e12 then
+        return string.format("%.2fT", num / 1e12)
+    elseif num >= 1e9 then
+        return string.format("%.2fB", num / 1e9)
+    elseif num >= 1e6 then
+        return string.format("%.2fM", num / 1e6)
+    elseif num >= 1e3 then
+        return string.format("%.2fK", num / 1e3)
+    else
+        return tostring(num)
+    end
+end
+
+-- Initialize pickaxe data
+local pickaxeData = {
+    allPickaxes = {},
+    missingPickaxes = {},
+    ownedPickaxes = {},
+    pickaxeNames = {},
+    nextPickaxe = nil,
+    selectedPickaxe = nil,
+    bestOwned = nil,
+    currentlyEquipped = nil,
+    playerCoins = 0
+}
+
+-- Function to get player's mining coins
+local function GetPlayerMiningCoins()
+    local localPlayer = game:GetService("Players").LocalPlayer
+    local miningCoins = 0
+    
+    -- Try to get the MiningCoins attribute
+    pcall(function()
+        miningCoins = localPlayer:GetAttribute("MiningCoins") or 0
+    end)
+    
+    return miningCoins
+end
+
+-- Function to get currently equipped pickaxe using MiningController
+local function GetEquippedPickaxe()
+    local equippedName = ""
+    
+    pcall(function()
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local MiningController = require(ReplicatedStorage.Controllers.MiningController)
+        
+        if MiningController and MiningController.CurrentPickaxe then
+            equippedName = MiningController.CurrentPickaxe.Name
+        end
+    end)
+    
+    -- Fallback to old method if MiningController method fails
+    if equippedName == "" then
+        pcall(function()
+            local playerReplica = game:GetService("ReplicatedStorage").Packages.Knit.GetController("CustomReplicaController"):GetReplica()
+            if playerReplica and playerReplica.Data then
+                equippedName = playerReplica.Data.EquippedPickaxe or ""
+            end
+        end)
+    end
+    
+    return equippedName
+end
+
+-- Function to get pickaxe data with improved error handling
+local function LoadPickaxeData()
+    -- Clear existing data
+    pickaxeData.allPickaxes = {}
+    pickaxeData.missingPickaxes = {}
+    pickaxeData.ownedPickaxes = {}
+    pickaxeData.pickaxeNames = {}
+    
+    -- Get current coins
+    pickaxeData.playerCoins = GetPlayerMiningCoins()
+    
+    -- Wrap everything in pcall to catch any errors
+    local success, errorMsg = pcall(function()
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        
+        -- Load necessary modules with error handling
+        local ItemController, ItemInfo, pickaxesFolder
+        
+        -- Try to load ItemController
+        pcall(function()
+            -- Try different paths for ItemController
+            ItemController = require(ReplicatedStorage.Controllers.Item.ItemController) or
+                             require(ReplicatedStorage.Controllers.ItemController)
+        end)
+        
+        -- Try to load ItemInfo
+        pcall(function()
+            ItemInfo = require(ReplicatedStorage.Data.Item.ItemInfo)
+        end)
+        
+        -- Try to get pickaxes folder
+        pcall(function()
+            pickaxesFolder = ReplicatedStorage:WaitForChild("Tools"):WaitForChild("Pickaxes")
+        end)
+        
+        -- Check if we have all required components
+        if not ItemController or not ItemInfo or not pickaxesFolder then
+            warn("Missing required components for pickaxe data loading")
+            return false
+        end
+        
+        -- Get currently equipped pickaxe using the improved function
+        local equippedPickaxe = GetEquippedPickaxe()
+        
+        -- Process each pickaxe
+        for _, pickaxeObj in pairs(pickaxesFolder:GetChildren()) do
+            local pickaxeName = pickaxeObj.Name
+            
+            if ItemInfo[pickaxeName] then
+                local pickaxeItemData = ItemInfo[pickaxeName]
+                local tierInfo = pickaxeItemData.Tiers and pickaxeItemData.Tiers[1]
+                local rarity = tierInfo and tierInfo.Rarity or "Unknown"
+                local price = pickaxeItemData.Price or (tierInfo and tierInfo.Price or 0)
+                
+                -- Check if player owns this pickaxe
+                local isOwned = false
+                pcall(function()
+                    isOwned = ItemController:GetItemAmount({
+                        Item = pickaxeName,
+                        Tier = 1
+                    }) > 0
+                end)
+                
+                -- Check if this is the equipped pickaxe
+                local isEquipped = (pickaxeName == equippedPickaxe)
+                
+                -- Create pickaxe info table with formatted price
+                local formattedPriceStr = formatNumber(price)
+                
+                local pickaxeInfo = {
+                    name = pickaxeName,
+                    price = price,
+                    formattedPrice = formattedPriceStr,
+                    rarity = rarity,
+                    owned = isOwned,
+                    equipped = isEquipped,
+                    canAfford = (pickaxeData.playerCoins >= price)
+                }
+                
+                -- Add to all pickaxes list and name list
+                table.insert(pickaxeData.allPickaxes, pickaxeInfo)
+                table.insert(pickaxeData.pickaxeNames, pickaxeName)
+                
+                -- Add to appropriate ownership list
+                if isOwned then
+                    table.insert(pickaxeData.ownedPickaxes, pickaxeInfo)
+                    
+                    -- Track equipped pickaxe
+                    if isEquipped then
+                        pickaxeData.currentlyEquipped = pickaxeInfo
+                    end
+                else
+                    table.insert(pickaxeData.missingPickaxes, pickaxeInfo)
+                end
+            end
+        end
+        
+        -- Sort pickaxes by price
+        table.sort(pickaxeData.allPickaxes, function(a, b) return a.price < b.price end)
+        table.sort(pickaxeData.ownedPickaxes, function(a, b) return a.price < b.price end)
+        table.sort(pickaxeData.missingPickaxes, function(a, b) return a.price < b.price end)
+        
+        -- Find the best owned pickaxe (most expensive)
+        if #pickaxeData.ownedPickaxes > 0 then
+            pickaxeData.bestOwned = pickaxeData.ownedPickaxes[#pickaxeData.ownedPickaxes]
+            local bestOwnedIndex = 0
+            
+            -- Find the index of the best owned pickaxe in the allPickaxes array
+            for i, pickaxe in ipairs(pickaxeData.allPickaxes) do
+                if pickaxe.name == pickaxeData.bestOwned.name then
+                    bestOwnedIndex = i
+                    break
+                end
+            end
+            
+            -- Set the next pickaxe to buy (the one after your best owned)
+            if bestOwnedIndex > 0 and bestOwnedIndex < #pickaxeData.allPickaxes then
+                -- Get the next pickaxe after your best owned one
+                pickaxeData.nextPickaxe = pickaxeData.allPickaxes[bestOwnedIndex + 1]
+            elseif bestOwnedIndex == #pickaxeData.allPickaxes then
+                -- If you own the best pickaxe, there's no next one
+                pickaxeData.nextPickaxe = nil
+            end
+        elseif #pickaxeData.allPickaxes > 0 then
+            -- If you own no pickaxes, get the cheapest one
+            pickaxeData.nextPickaxe = pickaxeData.allPickaxes[1]
+        end
+    end)
+    
+    if not success then
+        warn("Error loading pickaxe data: " .. tostring(errorMsg))
+        -- Add a default next pickaxe to prevent nil errors
+        pickaxeData.nextPickaxe = {
+            name = "Error loading pickaxes",
+            price = 0,
+            formattedPrice = "Error",
+            rarity = "Unknown",
+            owned = false,
+            equipped = false,
+            canAfford = false
+        }
+    end
+    
+    return success
+end
+
+-- Add Pickaxe dropdown
+local pickaxeDropdown = PickaxeSection:AddDropdown("PickaxeSelect", {
+    Title = "Select Pickaxe",
+    Values = {"Loading..."},
+    Multi = false,
+    Default = "Loading...",
+    Searchable = true
+})
+
+-- Add Buy button
+local buyPickaxeButton = PickaxeSection:AddButton({
+    Title = "Buy Selected Pickaxe",
+    Description = "Purchase the pickaxe selected above",
+    Callback = function()
+        if pickaxeData.selectedPickaxe then
+            -- Buy the selected pickaxe using the direct Remote Function
+            pcall(function()
+                local args = {
+                    [1] = pickaxeData.selectedPickaxe
+                }
+                
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.PickaxeMerchantService.RF.BuyPickaxe:InvokeServer(unpack(args))
+                
+                -- Wait a moment before reloading data to allow the purchase to process
+                wait(1)
+                
+                -- Reload pickaxe data after purchase
+                LoadPickaxeData()
+                
+                -- Update next pickaxe status
+                UpdateNextPickaxeStatus()
+                
+                -- Update dropdown values
+                UpdatePickaxeDropdown()
+            end)
+        end
+    end
+})
+
+-- Add auto-buy next pickaxe toggle
+local nextPickaxeStatus = PickaxeSection:AddParagraph("NextPickaxeStatus", {
+    Title = "Next Pickaxe",
+    Content = "Loading pickaxe data..."
+})
+
+-- Function to update next pickaxe status
+function UpdateNextPickaxeStatus()
+    if not pickaxeData.nextPickaxe then
+        nextPickaxeStatus:SetContent("You own all pickaxes!")
+        return
+    end
+    
+    local coins = GetPlayerMiningCoins()
+    local nextPickaxeName = pickaxeData.nextPickaxe.name
+    local nextPickaxePrice = pickaxeData.nextPickaxe.price
+    local formattedCoins = formatNumber(coins)
+    local formattedPrice = formatNumber(nextPickaxePrice)
+    
+    local statusContent = "Next: " .. nextPickaxeName .. " (" .. formattedPrice .. ")\n"
+    statusContent = statusContent .. "Your coins: " .. formattedCoins
+    
+    if coins < nextPickaxePrice then
+        local needed = nextPickaxePrice - coins
+        statusContent = statusContent .. "\nNeed " .. formatNumber(needed) .. " more coins"
+    else
+        statusContent = statusContent .. "\nYou can afford this pickaxe!"
+    end
+    
+    nextPickaxeStatus:SetContent(statusContent)
+end
+
+-- Auto buy toggle
+local autoBuyNextToggle = PickaxeSection:AddToggle("AutoBuyNext", {
+    Title = "Auto Buy Next Pickaxe",
+    Description = "Automatically buys the next progressive pickaxe when affordable",
+    Default = false
+})
+
+-- Function to update dropdown values
+function UpdatePickaxeDropdown()
+    pcall(function()
+        -- Load names of all pickaxes
+        local pickaxeNames = {}
+        for _, pickaxe in ipairs(pickaxeData.allPickaxes) do
+            table.insert(pickaxeNames, pickaxe.name)
+        end
+        
+        -- If no pickaxes loaded, add a placeholder
+        if #pickaxeNames == 0 then
+            table.insert(pickaxeNames, "No pickaxes found")
+        end
+        
+        -- Update dropdown values
+        pickaxeDropdown:SetValues(pickaxeNames)
+        
+        -- If we have a next pickaxe, set it as default
+        if pickaxeData.nextPickaxe then
+            pickaxeDropdown:SetValue(pickaxeData.nextPickaxe.name)
+        else
+            pickaxeDropdown:SetValue(pickaxeNames[1])
+        end
+    end)
+end
+
+-- Add Auto Equip Section
+local AutoEquipSection = Tabs.Mining:AddSection("Auto Equip")
+
+-- Auto equip status
+local equipStatus = AutoEquipSection:AddParagraph("EquipStatus", {
+    Title = "Pickaxe Status",
+    Content = "Loading pickaxe data..."
+})
+
+-- Auto equip toggle
+local autoEquipToggle = AutoEquipSection:AddToggle("AutoEquipBest", {
+    Title = "Auto Equip Best Pickaxe",
+    Description = "Automatically equips your best pickaxe if it isn't equipped",
+    Default = false
+})
+
+-- Function to update equip status
+function UpdateEquipStatus()
+    if not pickaxeData.bestOwned then
+        equipStatus:SetContent("No pickaxes owned")
+        return
+    end
+    
+    local statusContent = "Best: " .. pickaxeData.bestOwned.name
+    
+    if pickaxeData.currentlyEquipped then
+        statusContent = statusContent .. "\nEquipped: " .. pickaxeData.currentlyEquipped.name
+        
+        if pickaxeData.bestOwned.name == pickaxeData.currentlyEquipped.name then
+            statusContent = statusContent .. "\nStatus: Best pickaxe equipped"
+        else
+            statusContent = statusContent .. "\nStatus: Not using best pickaxe"
+        end
+    else
+        statusContent = statusContent .. "\nNo pickaxe equipped"
+    end
+    
+    equipStatus:SetContent(statusContent)
+end
+
+-- Function to equip best pickaxe
+function EquipBestPickaxe()
+    if not pickaxeData.bestOwned then return end
+    
+    -- Check if best pickaxe is already equipped
+    if pickaxeData.currentlyEquipped and pickaxeData.currentlyEquipped.name == pickaxeData.bestOwned.name then
+        return
+    end
+    
+    -- Equip best pickaxe
+    pcall(function()
+        local args = {
+            [1] = pickaxeData.bestOwned.name
+        }
+        
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.PickaxeMerchantService.RF.EquipPickaxe:InvokeServer(unpack(args))
+        
+        -- Wait a moment before reloading data
+        wait(1)
+        
+        -- Reload pickaxe data
+        LoadPickaxeData()
+        
+        -- Update equip status
+        UpdateEquipStatus()
+    end)
+end
+
+-- Load pickaxe data with retry
+spawn(function()
+    local success = false
+    local attempts = 0
+    
+    while not success and attempts < 5 do
+        attempts = attempts + 1
+        success = LoadPickaxeData()
+        
+        if not success then
+            nextPickaxeStatus:SetContent("Loading attempt " .. attempts .. "/5...")
+            wait(2) -- Wait before retrying
+        end
+    end
+    
+    -- Update UI based on result
+    if success then
+        UpdateNextPickaxeStatus()
+        UpdateEquipStatus()
+        UpdatePickaxeDropdown()
+    else
+        nextPickaxeStatus:SetContent("Failed to load pickaxe data. Try rejoining.")
+        equipStatus:SetContent("Failed to load pickaxe data.")
+    end
+    
+    -- Start status update loop
+    spawn(function()
+        while wait(5) do
+            LoadPickaxeData()
+            UpdateNextPickaxeStatus()
+            UpdateEquipStatus()
+        end
+    end)
+end)
+
+-- Handle dropdown selection
+pickaxeDropdown:OnChanged(function(value)
+    if value ~= "Loading..." and value ~= "No pickaxes found" then
+        pickaxeData.selectedPickaxe = value
+    end
+end)
+
+-- Auto buy next pickaxe toggle handler
+autoBuyNextToggle:OnChanged(function()
+    if autoBuyNextToggle.Value then
+        spawn(function()
+            while autoBuyNextToggle.Value do
+                -- Reload pickaxe data to get the latest
+                local success = LoadPickaxeData()
+                
+                if success and pickaxeData.nextPickaxe then
+                    -- Check if player can afford the next pickaxe
+                    local playerCoins = GetPlayerMiningCoins()
+                    
+                    if playerCoins >= pickaxeData.nextPickaxe.price then
+                        -- Update status
+                        nextPickaxeStatus:SetContent("Buying: " .. pickaxeData.nextPickaxe.name)
+                        
+                        -- Attempt to buy the next pickaxe
+                        pcall(function()
+                            local args = {
+                                [1] = pickaxeData.nextPickaxe.name
+                            }
+                            
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.PickaxeMerchantService.RF.BuyPickaxe:InvokeServer(unpack(args))
+                            
+                            -- Wait a moment before reloading data
+                            wait(1)
+                            
+                            -- Reload data after purchase
+                            LoadPickaxeData()
+                            
+                            -- Update UI
+                            UpdateNextPickaxeStatus()
+                            UpdateEquipStatus()
+                            UpdatePickaxeDropdown()
+                        end)
+                    else
+                        -- Update status with affordability info
+                        UpdateNextPickaxeStatus()
+                    end
+                else
+                    -- Handle case where we can't load data or no pickaxes left
+                    if not success then
+                        nextPickaxeStatus:SetContent("Error loading pickaxe data")
+                    else
+                        nextPickaxeStatus:SetContent("You own all pickaxes!")
+                        autoBuyNextToggle:SetValue(false) -- Turn off toggle if all pickaxes owned
+                        break
+                    end
+                end
+                
+                wait(5) -- Wait before checking again
+            end
+        end)
+    end
+end)
+
+-- Auto equip toggle handler
+autoEquipToggle:OnChanged(function()
+    if autoEquipToggle.Value then
+        spawn(function()
+            while autoEquipToggle.Value do
+                -- Reload pickaxe data to get the latest
+                local success = LoadPickaxeData()
+                
+                if success then
+                    -- Check if best pickaxe is already equipped
+                    if pickaxeData.bestOwned and pickaxeData.currentlyEquipped then
+                        if pickaxeData.bestOwned.name ~= pickaxeData.currentlyEquipped.name then
+                            EquipBestPickaxe()
+                        end
+                    elseif pickaxeData.bestOwned then
+                        -- If no pickaxe equipped but we have one
+                        EquipBestPickaxe()
+                    end
+                    
+                    -- Update equip status
+                    UpdateEquipStatus()
+                end
+                
+                wait(5) -- Check every 5 seconds
+            end
+        end)
+    end
+end)
 
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
