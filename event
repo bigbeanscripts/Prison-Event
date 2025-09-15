@@ -985,7 +985,7 @@ local function ExtractBlockNamesFiltered()
     for _, layerData in ipairs(LayerInfoModule) do
         for blockName in pairs(layerData.Spawnable) do
             local lowerName = string.lower(blockName)
-            if lowerName ~= "dirt" and lowerName ~= "stone" and not blockSeen[blockName] then
+            if lowerName ~= "dirt" and lowerName ~= "stone" and lowerName ~= "darkstone" and not blockSeen[blockName] then
                 table.insert(blockNames, blockName)
                 blockSeen[blockName] = true
             end
@@ -1184,65 +1184,74 @@ local function StartMining()
         end
     end)
 end
--- Improved path mining loop (Mine Along the Way)
+
 local pathMiningConnection
-local currentPathBlockIndex = 1  -- Track which block type we're currently targeting
-local blockTypeCounts = {}  -- Track count of each block type found
+local currentPathBlockIndex = 1 
+local lastMiningTime = os.clock()
+local blockTypeCounts = {}  
+local miningDelay = 0.05 
+
 
 local function StartPathMining()
     if pathMiningConnection then
         pathMiningConnection:Disconnect()
     end
 
+    if #pathMiningBlocks > 0 then
+        print("🎯 Starting with: " .. pathMiningBlocks[currentPathBlockIndex])
+    end
+
     pathMiningConnection = RunService.Heartbeat:Connect(function()
         if not mineAlongPath or isMinePaused or #pathMiningBlocks == 0 then return end
-        
+
+        local currentTime = os.clock()
+        if currentTime - lastMiningTime < miningDelay then return end
+
         if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
             blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
-            if not blocksFolder then return end
-        end
-
-        -- Get the current target block type
-        local currentTarget = pathMiningBlocks[currentPathBlockIndex]
-        
-        -- Count blocks of current target type
-        local foundCount = 0
-        local foundBlock = false
-        
-        -- First pass: Count blocks of current type
-        for _, block in ipairs(blocksFolder:GetChildren()) do
-            local blockName = string.lower(block.Name)
-            if string.find(blockName, string.lower(currentTarget)) and BlockExists(block) then
-                foundCount = foundCount + 1
+            if not blocksFolder then
+                return
             end
         end
-        
-        -- Store the count for debugging
-        blockTypeCounts[currentTarget] = foundCount
-        
-        -- Second pass: Mine a block if found
-        if foundCount > 0 then
+
+        local tried = 0
+        local blockFound = false
+        local blockToMine = nil
+
+        while tried < #pathMiningBlocks do
+            local currentTarget = pathMiningBlocks[currentPathBlockIndex]
+            local foundCount = 0
+
+            -- Count blocks of current target type
             for _, block in ipairs(blocksFolder:GetChildren()) do
                 local blockName = string.lower(block.Name)
                 if string.find(blockName, string.lower(currentTarget)) and BlockExists(block) then
-                    MiningService:MineBlock(block):andThen(function() end)
-                    foundBlock = true
-                    break -- Mine one block per frame
+                    foundCount = foundCount + 1
+                    if not blockToMine then
+                        blockToMine = block
+                    end
                 end
             end
-        end
-        
-        -- If no blocks of current type found, move to next type
-        if foundCount == 0 then
-            local previousTarget = currentTarget
-            currentPathBlockIndex = currentPathBlockIndex + 1
-            
-            -- If we've gone through all types, start over from the first
-            if currentPathBlockIndex > #pathMiningBlocks then
-                currentPathBlockIndex = 1
+
+
+            if foundCount > 0 then
+                blockFound = true
+                break
+            else
+                -- Rotate to next type
+                local previousTarget = currentTarget
+                currentPathBlockIndex = currentPathBlockIndex + 1
+                if currentPathBlockIndex > #pathMiningBlocks then
+                    currentPathBlockIndex = 1
+                end
+                local newTarget = pathMiningBlocks[currentPathBlockIndex]
+                tried = tried + 1
             end
-            
-            local newTarget = pathMiningBlocks[currentPathBlockIndex]
+        end
+
+        if blockFound and blockToMine then
+            MiningService:MineBlock(blockToMine):andThen(function() end)
+            lastMiningTime = currentTime
         end
     end)
 end
