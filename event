@@ -977,21 +977,34 @@ local function ExtractBlockNames()
     return blockNames
 end
 
--- Extract filtered blocks (no dirt/stone), preserve order from LayerInfo
+-- Extract filtered blocks (no dirt/stone/other ignored stones), preserve order from LayerInfo
 local function ExtractBlockNamesFiltered()
     local blockNames = {}
     local blockSeen = {}
-    
+
+    -- Set of block names to ignore
+    local ignoredBlocks = {
+        dirt = true,
+        stone = true,
+        darkstone = true,
+        yellowstone = true,
+        orangestone = true,
+        bluestone = true,
+        greenstone = true,
+        redstone = true,
+        purplestone = true
+    }
+
     for _, layerData in ipairs(LayerInfoModule) do
         for blockName in pairs(layerData.Spawnable) do
             local lowerName = string.lower(blockName)
-            if lowerName ~= "dirt" and lowerName ~= "stone" and lowerName ~= "darkstone" and not blockSeen[blockName] then
+            if not ignoredBlocks[lowerName] and not blockSeen[blockName] then
                 table.insert(blockNames, blockName)
                 blockSeen[blockName] = true
             end
         end
     end
-    
+
     return blockNames
 end
 
