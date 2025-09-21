@@ -60,6 +60,7 @@ local Tabs = {
     Eggs = Window:AddTab({ Title = "Eggs", Icon = "egg" }),
     Tower = Window:AddTab({ Title = "Tower", Icon = "castle" }),
     Merchant = Window:AddTab({ Title = "Merchant", Icon = "phosphor-shopping-cart-fill" }),
+    Wheel = Window:AddTab({ Title = "Miners Fortune Wheel", Icon = "ferris-wheel" }),
     Mining = Window:AddTab({ Title = "Mining", Icon = "pickaxe" }),
 }
 
@@ -106,21 +107,24 @@ end)
 
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
-    if player:GetAttribute("ZoneMinersDreamland") then
+
+    -- Check player attributes first
+    if player:GetAttribute("ZoneDesertMines") then
+        return "DesertMines"
+    elseif player:GetAttribute("ZoneMinersDreamland") then
         return "MinersDreamland"
     end
-    
-    -- Look through workspace as fallback
+
+    -- Fallback: look through workspace zones
+    local glassBridgeZone = workspace.Zones:FindFirstChild("DesertMines")
+    if glassBridgeZone then return glassBridgeZone.Name end
 
     local frontmanZone = workspace.Zones:FindFirstChild("MinersDreamland")
     if frontmanZone then return frontmanZone.Name end
 
-    local glassBridgeZone = workspace.Zones:FindFirstChild("MinersDreamland")
-    if glassBridgeZone then return glassBridgeZone.Name end
-    
-    
     return nil
 end
+
 
 local function GetValidZone(trainingType)
     local zone = GetCurrentZone()
@@ -452,6 +456,8 @@ local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 
 local npcLocations = {
     MinersDreamland = workspace.GameObjects.ArmWrestling.MinersDreamland.NPC,
+    DesertMines = workspace.GameObjects.ArmWrestling.DesertMines.NPC,
+
 }
 
 local modelNames = {}
@@ -916,6 +922,39 @@ AutoBuyToggle:OnChanged(function()
     end
 end)
 
+local minersfortune = Tabs.Wheel:AddSection("Mines Fortune")
+
+
+local GhostFortuneSpinDropdown = Tabs.Wheel:AddDropdown("GhostFortuneSpinAmount", {
+    Title = "Spin Amount",
+    Description = "Select Wheel Spin Amount",
+    Values = {"1x", "3x", "10x"},
+    Multi = false,
+    Default = "1x"
+})
+
+local AutoGhostFortuneToggle = Tabs.Wheel:AddToggle("AutoGhostFortuneSpin", {
+    Title = "Auto spin Miners Fortune wheel",
+    Default = false
+})
+
+AutoGhostFortuneToggle:OnChanged(function()
+    if AutoGhostFortuneToggle.Value then
+        spawn(function()
+            while true do
+                if not AutoGhostFortuneToggle.Value then break end
+                
+                local args = {
+                    [1] = "Miners Fortune",
+                    [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
+                
+                wait(1)
+            end
+        end)
+    end
+end)
 
 -- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -926,81 +965,115 @@ local Knit = require(ReplicatedStorage.Packages.Knit)
 Knit.OnStart():await()
 
 local MiningService = Knit.GetService("MiningService")
-local blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
-local mineSpawn = workspace.Zones.MinersDreamland.Interactables.Mining.MineSpawn
-local timeLeftLabel = mineSpawn.Attachment.BillboardGui.TimeLeft
+local blocksFolder = nil -- Will be dynamically set
 
 -- Get LayerInfo from the game module
 local LayerInfoModule = require(ReplicatedStorage.Data.LayerInfo)
-
 -- Mine reset handling variables
 local isMinePaused = false
 local mineResetCheckConnection
 local lastCheckedTime = 0
-local mineResetThreshold = 5 -- Stop mining when timer is under 5s
+local mineResetThreshold = 5 -- Default threshold for path 1
+local mineResetThresholdPath1 = 5 -- Stop mining when timer is under 5s (static path)
+local mineResetThresholdPath2 = 15 -- Stop mining when timer is under 15s (dynamic path)
 local mineRestartThreshold = 19 * 60 + 57 -- Restart mining when timer is under 19m 57s
 
 local function ParseTimerText(timerText)
-    if not timerText then return 0 end
+    if not timerText or timerText == "" then return 0 end
 
     -- "MM:SS" format
     local minutes, seconds = timerText:match("(%d+):(%d+)")
     if minutes and seconds then
-        return tonumber(minutes) * 60 + tonumber(seconds)
+        local totalSeconds = tonumber(minutes) * 60 + tonumber(seconds)
+        return totalSeconds
     end
 
     -- "Xm Ys" format
     local m, s = timerText:match("(%d+)m%s*(%d+)s")
     if m and s then
-        return tonumber(m) * 60 + tonumber(s)
+        local totalSeconds = tonumber(m) * 60 + tonumber(s)
+        return totalSeconds
     end
 
-    -- Fallback to 0 if parsing fails
+    -- "Xs" format (seconds only)
+    local onlySeconds = timerText:match("(%d+)s")
+    if onlySeconds then
+        local totalSeconds = tonumber(onlySeconds)
+        return totalSeconds
+    end
+
+    -- Fallback: try to extract any numbers and assume it's seconds
+    local numbers = {}
+    for num in timerText:gmatch("(%d+)") do
+        table.insert(numbers, tonumber(num))
+    end
+    
+    if #numbers >= 2 then
+        return totalSeconds
+    elseif #numbers == 1 then
+        return numbers[1]
+    end
     return 0
 end
 
+-- Reference to the LayerInfo module in ReplicatedStorage
+local LayerInfoModule = require(game:GetService("ReplicatedStorage").Data.LayerInfo)
 
--- Extract all block names from the module, preserve order from LayerInfo
+-- Extract all block names from the module, preserve order
 local function ExtractBlockNames()
     local blockNames = {}
     local blockSeen = {}
-    
-    for _, layerData in ipairs(LayerInfoModule) do
-        for blockName in pairs(layerData.Spawnable) do
-            if not blockSeen[blockName] then
-                table.insert(blockNames, blockName)
-                blockSeen[blockName] = true
+
+    for _, mineLayers in pairs(LayerInfoModule) do
+        for _, layerData in ipairs(mineLayers) do
+            for blockName in pairs(layerData.Spawnable) do
+                if not blockSeen[blockName] then
+                    table.insert(blockNames, blockName)
+                    blockSeen[blockName] = true
+                end
             end
         end
     end
-    
+
     return blockNames
 end
 
--- Extract filtered blocks (no dirt/stone/other ignored stones), preserve order from LayerInfo
+-- Extract filtered blocks (ignore dirt/stone/sandstones), preserve order
 local function ExtractBlockNamesFiltered()
     local blockNames = {}
     local blockSeen = {}
 
-    -- Set of block names to ignore
+    -- Set of block names to ignore (normalized: lowercase, no spaces)
     local ignoredBlocks = {
-        dirt = true,
-        stone = true,
-        darkstone = true,
-        yellowstone = true,
-        orangestone = true,
-        bluestone = true,
-        greenstone = true,
-        redstone = true,
-        purplestone = true
+        ["dirt"] = true,
+        ["stone"] = true,
+        ["darkstone"] = true,
+        ["yellowstone"] = true,
+        ["orangestone"] = true,
+        ["bluestone"] = true,
+        ["greenstone"] = true,
+        ["redstone"] = true,
+        ["purplestone"] = true,
+        ["redsandstone"] = true,
+        ["bluesandstone"] = true,
+        ["greensandstone"] = true,
+        ["yellowsandstone"] = true,
+        ["orangesandstone"] = true,
+        ["purplesandstone"] = true,
+        ["pinksandstone"] = true,
+        ["sand"] = true,
+        ["sandstone"] = true
     }
 
-    for _, layerData in ipairs(LayerInfoModule) do
-        for blockName in pairs(layerData.Spawnable) do
-            local lowerName = string.lower(blockName)
-            if not ignoredBlocks[lowerName] and not blockSeen[blockName] then
-                table.insert(blockNames, blockName)
-                blockSeen[blockName] = true
+    for _, mineLayers in pairs(LayerInfoModule) do
+        for _, layerData in ipairs(mineLayers) do
+            for blockName in pairs(layerData.Spawnable) do
+                -- Normalize the block name: lowercase + remove spaces
+                local lowerName = string.lower(blockName):gsub("%s+", "")
+                if not ignoredBlocks[lowerName] and not blockSeen[blockName] then
+                    table.insert(blockNames, blockName)
+                    blockSeen[blockName] = true
+                end
             end
         end
     end
@@ -1008,6 +1081,7 @@ local function ExtractBlockNamesFiltered()
     return blockNames
 end
 
+-- Precompute
 local AllBlockNames = ExtractBlockNames()
 local FilteredBlockNames = ExtractBlockNamesFiltered()
 
@@ -1023,33 +1097,185 @@ local targetBlockMiningConnection
 local pathMiningBlocks = {}
 local mineAlongPath = false
 
-local function CheckMineReset()
-    if not timeLeftLabel then 
-        timeLeftLabel = workspace.Zones.MinersDreamland.Interactables.Mining.MineSpawn.Attachment.BillboardGui.TimeLeft
-        if not timeLeftLabel then return false end
+
+local timeLeftLabel = nil
+local lastPathCheck = 0
+local currentPathIndex = 1
+local PATH_CHECK_INTERVAL = 1 -- Check path every second
+
+-- Define the two paths
+local paths = {
+    -- Path 1: Original static path (5 second threshold)
+    function()
+        return workspace:WaitForChild("GameObjects", 0.1)
+            :WaitForChild("Mining", 0.1)
+            :WaitForChild("Mining", 0.1)
+            :WaitForChild("MineSpawn", 0.1)
+            :WaitForChild("Attachment", 0.1)
+            :WaitForChild("BillboardGui", 0.1)
+            :WaitForChild("TimeLeft", 0.1)
+    end,
+    
+    -- Path 2: Dynamic GetChildren()[2] path (15 second threshold)
+    function()
+        local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
+            :WaitForChild("Mining", 0.1)
+        local children = miningFolder:GetChildren()
+        if #children >= 2 then
+            return children[2]:WaitForChild("MineSpawn", 0.1)
+                :WaitForChild("Attachment", 0.1)
+                :WaitForChild("BillboardGui", 0.1)
+                :WaitForChild("TimeLeft", 0.1)
+        else
+            error("Not enough children in Mining folder")
+        end
     end
+}
 
+local pathNames = {
+    "workspace.GameObjects.Mining.Mining.MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)",
+    "workspace.GameObjects.Mining:GetChildren()[2].MineSpawn.Attachment.BillboardGui.TimeLeft (15s threshold)"
+}
+
+-- Function to get the appropriate blocks folder based on current path
+local function GetCurrentBlocksFolder()
+    if currentPathIndex == 1 then
+        -- Path 1: workspace.GameObjects.Mining.Mining.Blocks
+        local success, folder = pcall(function()
+            return workspace:WaitForChild("GameObjects", 0.1)
+                :WaitForChild("Mining", 0.1)
+                :WaitForChild("Mining", 0.1)
+                :WaitForChild("Blocks", 0.1)
+        end)
+        if success and folder then
+            return folder
+        end
+    else
+        -- Path 2: workspace.GameObjects.Mining:GetChildren()[2].Blocks
+        local success, folder = pcall(function()
+            local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
+                :WaitForChild("Mining", 0.1)
+            local children = miningFolder:GetChildren()
+            if #children >= 2 then
+                return children[2]:WaitForChild("Blocks", 0.1)
+            end
+            return nil
+        end)
+        if success and folder then
+            return folder
+        end
+    end
+    return nil
+end
+
+local function CheckAndSwitchPath()
+    local currentTime = tick()
+    
+    -- Only check paths every second
+    if currentTime - lastPathCheck < PATH_CHECK_INTERVAL then
+        return
+    end
+    
+    lastPathCheck = currentTime
+    
+    -- Try current path first
+    local success, label = pcall(paths[currentPathIndex])
+    
+    if success and label and label.Parent then
+        -- Current path works, use it
+        timeLeftLabel = label
+        
+        -- Update blocks folder to match current path
+        blocksFolder = GetCurrentBlocksFolder()
+        
+        return
+    else
+        -- Current path failed, try the other path
+        
+        -- Switch to the other path
+        currentPathIndex = currentPathIndex == 1 and 2 or 1
+        
+        -- Try the other path
+        local success2, label2 = pcall(paths[currentPathIndex])
+        
+        if success2 and label2 and label2.Parent then
+            timeLeftLabel = label2
+            
+            -- Update blocks folder to match new path
+            blocksFolder = GetCurrentBlocksFolder()
+        else
+            -- If both paths fail, we'll keep the old timeLeftLabel if it still exists
+            if timeLeftLabel and not timeLeftLabel.Parent then
+                timeLeftLabel = nil
+            end
+        end
+    end
+end
+
+local function CheckMineReset()
+    -- Check and potentially switch paths every second
+    CheckAndSwitchPath()
+    
+    -- If no valid label found, return false
+    if not timeLeftLabel or not timeLeftLabel.Parent then
+        return false
+    end
+    
+    -- Parse the text into seconds
     local secondsLeft = ParseTimerText(timeLeftLabel.Text)
-
-    -- Pause mining if below threshold
-    if secondsLeft <= mineResetThreshold then
+    
+    if not secondsLeft or secondsLeft <= 0 then
+        return false
+    end
+    
+    -- Get the current threshold based on active path (ensure it's always current)
+    local currentThreshold = currentPathIndex == 1 and mineResetThresholdPath1 or mineResetThresholdPath2
+    
+    
+    -- Pause mining if below threshold (different thresholds for different paths)
+    if secondsLeft <= currentThreshold then
         return true
     end
-
+    
     -- Resume mining if mine was paused and timer is above threshold
-    if secondsLeft > mineResetThreshold and isMinePaused then
+    if secondsLeft > currentThreshold and isMinePaused then
         return false, true
     end
-
+    
     return false
 end
 
--- Fix for transparency disconnect error
-
--- Function to toggle block transparency
 local function ToggleBlockTransparency(transparent)
     blocksTransparent = transparent
-    
+
+    -- Helper to get all relevant blocks folders
+    local function getBlocksFolders()
+        local folders = {}
+        local miningGO = workspace.GameObjects.Mining
+        
+        -- Path 1: workspace.GameObjects.Mining.Mining.Blocks
+        local success1, folder1 = pcall(function()
+            return miningGO:WaitForChild("Mining", 0.1):WaitForChild("Blocks", 0.1)
+        end)
+        if success1 and folder1 then
+            table.insert(folders, folder1)
+        end
+        
+        -- Path 2: workspace.GameObjects.Mining:GetChildren()[2].Blocks
+        local success2, folder2 = pcall(function()
+            local children = miningGO:GetChildren()
+            if #children >= 2 then
+                return children[2]:WaitForChild("Blocks", 0.1)
+            end
+            return nil
+        end)
+        if success2 and folder2 then
+            table.insert(folders, folder2)
+        end
+        
+        return folders
+    end
+
     -- Always disconnect previous connection if it exists
     if transparencyConnection then
         pcall(function()
@@ -1061,29 +1287,25 @@ local function ToggleBlockTransparency(transparent)
     if transparent then
         transparencyConnection = task.spawn(function()
             while blocksTransparent do
-                -- Safe check that blocks folder exists
-                if blocksFolder and blocksFolder:IsDescendantOf(workspace) then
-                    for _, block in ipairs(blocksFolder:GetChildren()) do
-                        -- Safe check that Primary exists before changing transparency
-                        if block and block:FindFirstChild("Primary") then
-                            block.Primary.Transparency = 0.7
+                for _, blocksFolder in ipairs(getBlocksFolders()) do
+                    if blocksFolder and blocksFolder:IsDescendantOf(workspace) then
+                        for _, block in ipairs(blocksFolder:GetChildren()) do
+                            if block and block:FindFirstChild("Primary") then
+                                block.Primary.Transparency = 0.7
+                            end
                         end
                     end
-                else
-                    -- Try to reconnect to blocks folder if it doesn't exist
-                    pcall(function()
-                        blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
-                    end)
                 end
                 task.wait(3)
             end
         end)
     else
-        -- Safe check when turning transparency off
-        if blocksFolder and blocksFolder:IsDescendantOf(workspace) then
-            for _, block in ipairs(blocksFolder:GetChildren()) do
-                if block and block:FindFirstChild("Primary") then
-                    block.Primary.Transparency = 0
+        for _, blocksFolder in ipairs(getBlocksFolders()) do
+            if blocksFolder and blocksFolder:IsDescendantOf(workspace) then
+                for _, block in ipairs(blocksFolder:GetChildren()) do
+                    if block and block:FindFirstChild("Primary") then
+                        block.Primary.Transparency = 0
+                    end
                 end
             end
         end
@@ -1102,18 +1324,28 @@ local function StartMineResetMonitoring()
         if shouldPause and not isMinePaused then
             -- Pause mining due to imminent reset
             isMinePaused = true
+            print("Mining paused - timer below threshold")
         elseif not shouldPause and isMinePaused then
             -- Resume mining after reset
             isMinePaused = false
+            print("Mining resumed - timer above threshold")
         end
         
         if hasReset then
             -- Mine has just reset, recalculate everything
+            print("Mine has reset - restarting mining operations")
+            
+            -- Update blocks folder after reset
+            blocksFolder = GetCurrentBlocksFolder()
+            
             if targetBlockMiningEnabled then
                 StartTargetBlockMining()
             elseif miningEnabled then
                 StartMining()
             end
+            
+            -- Reset path mining index when mine resets
+            currentPathBlockIndex = 1
             
             -- Toggle transparency off and back on if needed
             if blocksTransparent then
@@ -1124,17 +1356,16 @@ local function StartMineResetMonitoring()
     end)
 end
 
-
 -- Function to verify if a block still exists
 local function BlockExists(block)
-    return block and block.Parent == blocksFolder
+    return block and block.Parent and blocksFolder and block.Parent == blocksFolder
 end
 
 -- Get the block with the highest depth
 local function GetHighestDepthBlock()
     -- Ensure blocks folder exists
     if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
-        blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
+        blocksFolder = GetCurrentBlocksFolder()
         if not blocksFolder then return nil end
     end
     
@@ -1149,17 +1380,37 @@ local function GetHighestDepthBlock()
     end
     return highestBlock
 end
--- Check if block is valuable (not dirt or stone)
+
 local function IsValuableBlock(blockName)
     local lowerName = string.lower(blockName)
-    return not (lowerName == "dirt" or lowerName == "stone")
+    local ignoredBlocks = {
+        ["dirt"] = true,
+        ["stone"] = true,
+        ["darkstone"] = true,
+        ["yellowstone"] = true,
+        ["orangestone"] = true,
+        ["bluestone"] = true,
+        ["greenstone"] = true,
+        ["redstone"] = true,
+        ["purplestone"] = true,
+        ["redsandstone"] = true,
+        ["bluesandstone"] = true,
+        ["greensandstone"] = true,
+        ["yellowsandstone"] = true,
+        ["orangesandstone"] = true,
+        ["purplesandstone"] = true,
+        ["pinksandstone"] = true,
+        ["sand"] = true,
+        ["sandstone"] = true
+    }
+    return not ignoredBlocks[lowerName]
 end
 
 -- Find best block to mine based on multi-select
 local function FindBestBlock()
     -- Ensure blocks folder exists
     if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
-        blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
+        blocksFolder = GetCurrentBlocksFolder()
         if not blocksFolder then return nil end
     end
     
@@ -1176,7 +1427,24 @@ local function FindBestBlock()
     return GetHighestDepthBlock()
 end
 
--- Mining loop
+local function MineRandomBlockIfSameDepth()
+    if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then return false end
+    local blocks = blocksFolder:GetChildren()
+    if #blocks == 0 then return false end
+
+    local firstDepth = blocks[1]:GetAttribute("Depth") or 0
+    for _, block in ipairs(blocks) do
+        if (block:GetAttribute("Depth") or 0) ~= firstDepth then
+            return false
+        end
+    end
+
+    -- All blocks have the same depth, mine a random one
+    local randomBlock = blocks[math.random(1, #blocks)]
+    MiningService:MineBlock(randomBlock):andThen(function() end)
+    return true
+end
+
 local function StartMining()
     if miningConnection then
         miningConnection:Disconnect()
@@ -1187,10 +1455,12 @@ local function StartMining()
         
         -- Ensure blocks folder exists after a mine reset
         if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
-            blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
+            blocksFolder = GetCurrentBlocksFolder()
             if not blocksFolder then return end
         end
-        
+
+        if MineRandomBlockIfSameDepth() then return end -- <--- Add this line
+
         local blockToMine = FindBestBlock()
         if blockToMine and BlockExists(blockToMine) then
             MiningService:MineBlock(blockToMine):andThen(function() end)
@@ -1203,7 +1473,6 @@ local currentPathBlockIndex = 1
 local lastMiningTime = os.clock()
 local blockTypeCounts = {}  
 local miningDelay = 0.05 
-
 
 local function StartPathMining()
     if pathMiningConnection then
@@ -1221,7 +1490,7 @@ local function StartPathMining()
         if currentTime - lastMiningTime < miningDelay then return end
 
         if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
-            blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
+            blocksFolder = GetCurrentBlocksFolder()
             if not blocksFolder then
                 return
             end
@@ -1245,7 +1514,6 @@ local function StartPathMining()
                     end
                 end
             end
-
 
             if foundCount > 0 then
                 blockFound = true
@@ -1286,7 +1554,7 @@ local function GetBlockInTargetRange()
     end
     
     if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
-        blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
+        blocksFolder = GetCurrentBlocksFolder()
         if not blocksFolder then return nil end
     end
     
@@ -1297,7 +1565,6 @@ local function GetBlockInTargetRange()
     end
     
     -- Mine along the way is no longer tied here
-
     local targetMinDepth = GetBlockMinDepth(targetBlock)
     
     local bestBlock = nil
@@ -1314,26 +1581,30 @@ local function GetBlockInTargetRange()
     return bestBlock or GetHighestDepthBlock()
 end
 
--- Target block mining loop
 local function StartTargetBlockMining()
     if targetBlockMiningConnection then
         targetBlockMiningConnection:Disconnect()
     end
-    
+
     targetBlockMiningConnection = RunService.Heartbeat:Connect(function()
         if not targetBlockMiningEnabled or isMinePaused then return end
-        
+
         if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
-            blocksFolder = workspace.Zones.MinersDreamland.Interactables.Mining.Blocks
+            blocksFolder = GetCurrentBlocksFolder()
             if not blocksFolder then return end
         end
-        
+
+        if MineRandomBlockIfSameDepth() then return end -- Mine random block if all depths are equal
+
         local blockToMine = GetBlockInTargetRange()
         if blockToMine and BlockExists(blockToMine) then
             MiningService:MineBlock(blockToMine):andThen(function() end)
         end
     end)
 end
+
+-- Initialize blocks folder on startup
+blocksFolder = GetCurrentBlocksFolder()
 
 -- UI Elements
 local miningSection = Tabs.Mining:AddSection("Mining Controls")
@@ -1342,7 +1613,6 @@ local miningToggle = Tabs.Mining:AddToggle("MiningToggle", {
     Title = "Auto Mining",
     Default = false
 })
-
 
 local blockDropdown = Tabs.Mining:AddDropdown("BlockSelection", {
     Title = "Select Blocks to Mine",
@@ -1384,7 +1654,6 @@ local pathMiningDropdown = Tabs.Mining:AddDropdown("PathMiningBlocks", {
     Searchable = true
 })
 
--- Add this to the pathMiningDropdown:OnChanged function
 pathMiningDropdown:OnChanged(function(value)
     pathMiningBlocks = {}
     for block, selected in pairs(value) do
@@ -1396,23 +1665,6 @@ pathMiningDropdown:OnChanged(function(value)
     -- Reset to first block type when selection changes
     currentPathBlockIndex = 1
 end)
-
--- Add this to the hasReset check in StartMineResetMonitoring
-if hasReset then
-    -- Reset path mining index when mine resets
-    currentPathBlockIndex = 1
-    if targetBlockMiningEnabled then
-        StartTargetBlockMining()
-    elseif miningEnabled then
-        StartMining()
-    end
-    
-    -- Toggle transparency off and back on if needed
-    if blocksTransparent then
-        ToggleBlockTransparency(false)
-        ToggleBlockTransparency(true)
-    end
-end
 
 local pathMiningToggle = Tabs.Mining:AddToggle("PathMining", {
     Title = "Mine Along the Way",
@@ -1474,7 +1726,6 @@ transparencyToggle:OnChanged(function(value)
     ToggleBlockTransparency(value)
 end)
 
-
 -- Mine Reset Status section
 local resetSection = Tabs.Mining:AddSection("Mine Reset Status")
 
@@ -1488,7 +1739,9 @@ spawn(function()
     while true do
         local success, text = pcall(function()
             if timeLeftLabel and timeLeftLabel:IsDescendantOf(workspace) then
-                return timeLeftLabel.Text
+                local currentThreshold = currentPathIndex == 1 and mineResetThresholdPath1 or mineResetThresholdPath2
+                local secondsLeft = ParseTimerText(timeLeftLabel.Text) or 0
+                return timeLeftLabel.Text .. " (Threshold: " .. currentThreshold .. "s, Path: " .. currentPathIndex .. ", Seconds: " .. secondsLeft .. ")"
             end
             return "Timer not found"
         end)
