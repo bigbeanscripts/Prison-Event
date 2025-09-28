@@ -2485,6 +2485,80 @@ autoEquipToggle:OnChanged(function()
     end
 end)
 
+
+local MiningVaultSection = Tabs.Mining:AddSection("Mining Vault")
+
+local MiningGoldStatus = MiningVaultSection:Paragraph("MiningGoldStatus", {
+    Title = "Mining Gold Amount",
+    Content = "Loading..."
+})
+
+local AutoOpenVaultToggle = MiningVaultSection:AddToggle("AutoOpenVault", {
+    Title = "Auto Open Mining Vault",
+    Description = "Automatically opens Mining Vault when you have Mining Gold.",
+    Default = false
+})
+
+local function parseAmount(amtText)
+    local numStr = amtText:match("x(.+)")
+    if not numStr then return 0 end
+    if numStr:find("k") then
+        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
+        return baseNum and (baseNum * 1000) or 0
+    else
+        return tonumber(numStr) or 0
+    end
+end
+
+-- Auto Open Mining Vault Loop
+AutoOpenVaultToggle:OnChanged(function(enabled)
+    if enabled then
+        task.spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            while AutoOpenVaultToggle.Value do
+                local player = game.Players.LocalPlayer
+                local goldObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Mining Gold/1")
+                
+                if goldObject and goldObject:FindFirstChild("ButtonDisplay") and goldObject.ButtonDisplay:FindFirstChild("Amt") then
+                    local amtText = goldObject.ButtonDisplay.Amt.Text
+                    local amount = parseAmount(amtText)
+                    MiningGoldStatus:SetValue(amtText)
+                    
+                    if amount >= 1 then
+                        pcall(function()
+                            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit.KnitClient)
+                            Knit.GetService("ChestService"):Open("MiningVault")
+                        end)
+                        task.wait(0.25) -- Fast check when gold is available
+                    else
+                        MiningGoldStatus:SetValue("No Gold")
+                        task.wait(1) -- Slower check when no gold
+                    end
+                else
+                    MiningGoldStatus:SetValue("No Gold")
+                    task.wait(1) -- Slower check when GUI element doesn't exist
+                end
+            end
+        end)
+    end
+end)
+
+-- Passive Status Updater (even when toggle is off)
+task.spawn(function()
+    while true do
+        local player = game:GetService("Players").LocalPlayer
+        local goldObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Mining Gold/1")
+        
+        if goldObject and goldObject:FindFirstChild("ButtonDisplay") and goldObject.ButtonDisplay:FindFirstChild("Amt") then
+            MiningGoldStatus:SetValue(goldObject.ButtonDisplay.Amt.Text)
+        else
+            MiningGoldStatus:SetValue("No Gold")
+        end
+        
+        task.wait(1)
+    end
+end)
+
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
 InterfaceManager:SetLibrary(Library)
