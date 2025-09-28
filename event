@@ -1,20 +1,28 @@
--- Function to get all valid egg names in alphabetical order, excluding "Egg Rewind"
+-- ✅ Extra egg names you always want included
+local extraEggNames = {
+    "OrangeSpikedCrystal",
+    "GemstoneSpiked",
+    "TeddyBear",
+    "ToyBeachBall",
+}
+
 local function getEggNames()
-    local eggNamesSet = {} -- Use a set to prevent duplicates
+    local eggNamesSet = {}
     local zones = workspace:FindFirstChild("Zones")
 
     if zones then
-        for _, zone in pairs(zones:GetChildren()) do
-            if zone:IsA("Folder") and not zone.Name:match("%d") and not zone.Name:match("Brainrot") and not zone.Name:match("Forest") and not zone.Name:match("Lake") and not zone.Name:match("Beach") then -- Ignore zones with numbers
-                local interactables = zone:FindFirstChild("Deco") or zone:FindFirstChild("Interactables")
+        for _, world in pairs(zones:GetChildren()) do
+            -- Only look at worlds with no numbers in their name
+            if world:IsA("Folder") and not world.Name:match("%d") then
+                local interactables = world:FindFirstChild("Interactables")
                 if interactables then
                     local eggs = interactables:FindFirstChild("Eggs")
                     if eggs then
                         for _, egg in pairs(eggs:GetChildren()) do
                             if not egg.Name:lower():find("rewind") then
                                 local name = egg.Name
-                                name = name:gsub("%s*[Ee][Gg][Gg]%s*$", "") -- Remove 'egg' at end, case-insensitive
-                                name = name:match("^%s*(.-)%s*$") -- Trim leading/trailing whitespace
+                                name = name:gsub("%s*[Ee][Gg][Gg]%s*$", "") -- remove "Egg" at end
+                                name = name:match("^%s*(.-)%s*$") -- trim spaces
                                 eggNamesSet[name] = true
                             end
                         end
@@ -24,13 +32,18 @@ local function getEggNames()
         end
     end
 
-    -- Convert set to list and sort
+    -- ✅ Add all extra names from the table
+    for _, extraName in ipairs(extraEggNames) do
+        eggNamesSet[extraName] = true
+    end
+
+    -- Convert set to sorted list
     local eggNames = {}
     for name in pairs(eggNamesSet) do
         table.insert(eggNames, name)
     end
-
     table.sort(eggNames)
+
     return eggNames
 end
 
@@ -109,7 +122,9 @@ local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
     -- Check player attributes first
-    if player:GetAttribute("ZoneDesertMines") then
+    if player:GetAttribute("ZonePlayfulMines") then
+        return "PlayfulMines"
+    elseif player:GetAttribute("ZoneDesertMines") then
         return "DesertMines"
     elseif player:GetAttribute("ZoneMinersDreamland") then
         return "MinersDreamland"
@@ -457,6 +472,7 @@ local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 local npcLocations = {
     MinersDreamland = workspace.GameObjects.ArmWrestling.MinersDreamland.NPC,
     DesertMines = workspace.GameObjects.ArmWrestling.DesertMines.NPC,
+    PlayfulMines = workspace.GameObjects.ArmWrestling.PlayfulMines.NPC
 
 }
 
@@ -976,6 +992,7 @@ local lastCheckedTime = 0
 local mineResetThreshold = 5 -- Default threshold for path 1
 local mineResetThresholdPath1 = 5 -- Stop mining when timer is under 5s (static path)
 local mineResetThresholdPath2 = 15 -- Stop mining when timer is under 15s (dynamic path)
+local mineResetThresholdPath3 = 5 -- Stop mining when timer is under 30s (path along predefined points)
 local mineRestartThreshold = 19 * 60 + 57 -- Restart mining when timer is under 19m 57s
 
 local function ParseTimerText(timerText)
@@ -1043,8 +1060,8 @@ local function ExtractBlockNamesFiltered()
     local blockNames = {}
     local blockSeen = {}
 
-    -- Set of block names to ignore (normalized: lowercase, no spaces)
     local ignoredBlocks = {
+        -- Regular stones
         ["dirt"] = true,
         ["stone"] = true,
         ["darkstone"] = true,
@@ -1054,6 +1071,8 @@ local function ExtractBlockNamesFiltered()
         ["greenstone"] = true,
         ["redstone"] = true,
         ["purplestone"] = true,
+
+        -- Sandstones
         ["redsandstone"] = true,
         ["bluesandstone"] = true,
         ["greensandstone"] = true,
@@ -1062,7 +1081,25 @@ local function ExtractBlockNamesFiltered()
         ["purplesandstone"] = true,
         ["pinksandstone"] = true,
         ["sand"] = true,
-        ["sandstone"] = true
+        ["sandstone"] = true,
+
+        -- Plastics (all colors)
+        ["plastic"] = true,
+        ["hardplastic"] = true,
+        ["redplastic"] = true,
+        ["blueplastic"] = true,
+        ["greenplastic"] = true,
+        ["yellowplastic"] = true,
+        ["orangeplastic"] = true,
+        ["purpleplastic"] = true,
+        ["pinkplastic"] = true,
+        ["redhardplastic"] = true,
+        ["bluehardplastic"] = true,
+        ["greenhardplastic"] = true,
+        ["yellowhardplastic"] = true,
+        ["orangehardplastic"] = true,
+        ["purplehardplastic"] = true,
+        ["pinkhardplastic"] = true
     }
 
     for _, mineLayers in pairs(LayerInfoModule) do
@@ -1103,7 +1140,6 @@ local lastPathCheck = 0
 local currentPathIndex = 1
 local PATH_CHECK_INTERVAL = 1 -- Check path every second
 
--- Define the two paths
 local paths = {
     -- Path 1: Original static path (5 second threshold)
     function()
@@ -1127,123 +1163,120 @@ local paths = {
                 :WaitForChild("BillboardGui", 0.1)
                 :WaitForChild("TimeLeft", 0.1)
         else
-            error("Not enough children in Mining folder")
+            error("Not enough children in Mining folder for Path 2")
+        end
+    end,
+
+    -- ✅ Path 3: Dynamic GetChildren()[3] path (e.g. 20 second threshold)
+    function()
+        local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
+            :WaitForChild("Mining", 0.1)
+        local children = miningFolder:GetChildren()
+        if #children >= 3 then
+            return children[3]:WaitForChild("MineSpawn", 0.1)
+                :WaitForChild("Attachment", 0.1)
+                :WaitForChild("BillboardGui", 0.1)
+                :WaitForChild("TimeLeft", 0.1)
+        else
+            error("Not enough children in Mining folder for Path 3")
         end
     end
 }
+
 
 local pathNames = {
     "workspace.GameObjects.Mining.Mining.MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)",
-    "workspace.GameObjects.Mining:GetChildren()[2].MineSpawn.Attachment.BillboardGui.TimeLeft (15s threshold)"
+    "workspace.GameObjects.Mining:GetChildren()[2].MineSpawn.Attachment.BillboardGui.TimeLeft (15s threshold)",
+    "workspace.GameObjects.Mining:GetChildren()[3].MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)"
 }
 
--- Function to get the appropriate blocks folder based on current path
+-- Updated GetCurrentBlocksFolder to handle all three paths
 local function GetCurrentBlocksFolder()
-    if currentPathIndex == 1 then
-        -- Path 1: workspace.GameObjects.Mining.Mining.Blocks
-        local success, folder = pcall(function()
-            return workspace:WaitForChild("GameObjects", 0.1)
-                :WaitForChild("Mining", 0.1)
-                :WaitForChild("Mining", 0.1)
-                :WaitForChild("Blocks", 0.1)
-        end)
-        if success and folder then
-            return folder
-        end
-    else
-        -- Path 2: workspace.GameObjects.Mining:GetChildren()[2].Blocks
-        local success, folder = pcall(function()
-            local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
-                :WaitForChild("Mining", 0.1)
-            local children = miningFolder:GetChildren()
-            if #children >= 2 then
+    local success, folder = pcall(function()
+        local miningGO = workspace:WaitForChild("GameObjects", 0.1):WaitForChild("Mining", 0.1)
+        if currentPathIndex == 1 then
+            return miningGO:WaitForChild("Mining", 0.1):WaitForChild("Blocks", 0.1)
+        else
+            local children = miningGO:GetChildren()
+            if currentPathIndex == 2 and #children >= 2 then
                 return children[2]:WaitForChild("Blocks", 0.1)
+            elseif currentPathIndex == 3 and #children >= 3 then
+                return children[3]:WaitForChild("Blocks", 0.1)
             end
-            return nil
-        end)
-        if success and folder then
-            return folder
         end
-    end
-    return nil
+        return nil
+    end)
+    return success and folder or nil
 end
 
+-- Updated CheckAndSwitchPath to rotate through all 3 paths
 local function CheckAndSwitchPath()
     local currentTime = tick()
-    
-    -- Only check paths every second
-    if currentTime - lastPathCheck < PATH_CHECK_INTERVAL then
-        return
-    end
-    
+    if currentTime - lastPathCheck < PATH_CHECK_INTERVAL then return end
     lastPathCheck = currentTime
-    
-    -- Try current path first
-    local success, label = pcall(paths[currentPathIndex])
-    
-    if success and label and label.Parent then
-        -- Current path works, use it
-        timeLeftLabel = label
-        
-        -- Update blocks folder to match current path
-        blocksFolder = GetCurrentBlocksFolder()
-        
-        return
-    else
-        -- Current path failed, try the other path
-        
-        -- Switch to the other path
-        currentPathIndex = currentPathIndex == 1 and 2 or 1
-        
-        -- Try the other path
-        local success2, label2 = pcall(paths[currentPathIndex])
-        
-        if success2 and label2 and label2.Parent then
-            timeLeftLabel = label2
-            
-            -- Update blocks folder to match new path
+
+    local tried = 0
+    local maxPaths = #paths
+
+    while tried < maxPaths do
+        local success, label = pcall(paths[currentPathIndex])
+        if success and label and label.Parent then
+            timeLeftLabel = label
             blocksFolder = GetCurrentBlocksFolder()
+            return
         else
-            -- If both paths fail, we'll keep the old timeLeftLabel if it still exists
-            if timeLeftLabel and not timeLeftLabel.Parent then
-                timeLeftLabel = nil
-            end
+            -- Rotate to next path
+            currentPathIndex = currentPathIndex % maxPaths + 1
+            tried = tried + 1
         end
     end
+
+    -- If none of the paths work, clear timeLeftLabel
+    timeLeftLabel = nil
 end
+
 
 local function CheckMineReset()
     -- Check and potentially switch paths every second
     CheckAndSwitchPath()
-    
+
     -- If no valid label found, return false
     if not timeLeftLabel or not timeLeftLabel.Parent then
         return false
     end
-    
+
     -- Parse the text into seconds
     local secondsLeft = ParseTimerText(timeLeftLabel.Text)
-    
+
     if not secondsLeft or secondsLeft <= 0 then
         return false
     end
-    
-    -- Get the current threshold based on active path (ensure it's always current)
-    local currentThreshold = currentPathIndex == 1 and mineResetThresholdPath1 or mineResetThresholdPath2
-    
-    
-    -- Pause mining if below threshold (different thresholds for different paths)
+
+    -- Determine threshold based on current path
+    local currentThreshold
+    if currentPathIndex == 1 then
+        currentThreshold = mineResetThresholdPath1
+    elseif currentPathIndex == 2 then
+        currentThreshold = mineResetThresholdPath2
+    elseif currentPathIndex == 3 then
+        currentThreshold = mineResetThresholdPath3 -- make sure this variable is defined
+    else
+        currentThreshold = 0
+    end
+
+    -- Pause mining if below threshold
     if secondsLeft <= currentThreshold then
         return true
     end
-    
+
     -- Resume mining if mine was paused and timer is above threshold
     if secondsLeft > currentThreshold and isMinePaused then
         return false, true
     end
-    
+
     return false
 end
+
 
 local function ToggleBlockTransparency(transparent)
     blocksTransparent = transparent
@@ -1271,6 +1304,18 @@ local function ToggleBlockTransparency(transparent)
         end)
         if success2 and folder2 then
             table.insert(folders, folder2)
+        end
+
+        -- Path 3: workspace.GameObjects.Mining:GetChildren()[3].Blocks
+        local success3, folder3 = pcall(function()
+            local children = miningGO:GetChildren()
+            if #children >= 3 then
+                return children[3]:WaitForChild("Blocks", 0.1)
+            end
+            return nil
+        end)
+        if success3 and folder3 then
+            table.insert(folders, folder3)
         end
         
         return folders
@@ -1312,6 +1357,7 @@ local function ToggleBlockTransparency(transparent)
     end
 end
 
+
 -- Start monitoring mine reset timer
 local function StartMineResetMonitoring()
     if mineResetCheckConnection then
@@ -1324,16 +1370,13 @@ local function StartMineResetMonitoring()
         if shouldPause and not isMinePaused then
             -- Pause mining due to imminent reset
             isMinePaused = true
-            print("Mining paused - timer below threshold")
         elseif not shouldPause and isMinePaused then
             -- Resume mining after reset
             isMinePaused = false
-            print("Mining resumed - timer above threshold")
         end
         
         if hasReset then
             -- Mine has just reset, recalculate everything
-            print("Mine has reset - restarting mining operations")
             
             -- Update blocks folder after reset
             blocksFolder = GetCurrentBlocksFolder()
@@ -1402,6 +1445,7 @@ local function IsValuableBlock(blockName)
         ["pinksandstone"] = true,
         ["sand"] = true,
         ["sandstone"] = true
+
     }
     return not ignoredBlocks[lowerName]
 end
@@ -1480,7 +1524,6 @@ local function StartPathMining()
     end
 
     if #pathMiningBlocks > 0 then
-        print("🎯 Starting with: " .. pathMiningBlocks[currentPathBlockIndex])
     end
 
     pathMiningConnection = RunService.Heartbeat:Connect(function()
@@ -1733,19 +1776,29 @@ local resetStatusLabel = resetSection:AddParagraph("ResetStatus", {
     Title = "Mine Reset Timer",
     Content = "Checking..."
 })
-
 -- Update reset status text continuously
 spawn(function()
     while true do
         local success, text = pcall(function()
             if timeLeftLabel and timeLeftLabel:IsDescendantOf(workspace) then
-                local currentThreshold = currentPathIndex == 1 and mineResetThresholdPath1 or mineResetThresholdPath2
+                -- Determine threshold based on path
+                local currentThreshold
+                if currentPathIndex == 1 then
+                    currentThreshold = mineResetThresholdPath1
+                elseif currentPathIndex == 2 then
+                    currentThreshold = mineResetThresholdPath2
+                elseif currentPathIndex == 3 then
+                    currentThreshold = mineResetThresholdPath3 -- define this variable
+                else
+                    currentThreshold = 0
+                end
+
                 local secondsLeft = ParseTimerText(timeLeftLabel.Text) or 0
                 return timeLeftLabel.Text .. " (Threshold: " .. currentThreshold .. "s, Path: " .. currentPathIndex .. ", Seconds: " .. secondsLeft .. ")"
             end
             return "Timer not found"
         end)
-        
+
         if success then
             resetStatusLabel:SetContent("Mine Reset: " .. text)
         else
@@ -1755,7 +1808,136 @@ spawn(function()
     end
 end)
 
+
 StartMineResetMonitoring()
+
+
+-- Add Smelt Ores Section
+local SmeltSection = Tabs.Mining:AddSection("Smelt Ores")
+
+-- Add Fuel toggle
+local addFuelToggle = SmeltSection:AddToggle("AddFuel", {
+    Title = "Add Fuel (Coal)",
+    Description = "Automatically adds coal as fuel.",
+    Default = false
+})
+
+addFuelToggle:OnChanged(function()
+    if addFuelToggle.Value then
+        spawn(function()
+            while addFuelToggle.Value do
+                pcall(function()
+                    local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit.KnitClient)
+                    Knit.GetService("OreSmeltingService"):AddAllOres("Coal Ore", 1)
+                end)
+                wait(5) -- Every 5 seconds
+            end
+        end)
+    end
+end)
+
+-- Auto Claim toggle
+local autoClaimSmeltToggle = SmeltSection:AddToggle("AutoClaimSmelt", {
+    Title = "Auto Claim",
+    Description = "Automatically claims the smelted ores.",
+    Default = false
+})
+
+autoClaimSmeltToggle:OnChanged(function()
+    if autoClaimSmeltToggle.Value then
+        spawn(function()
+            while autoClaimSmeltToggle.Value do
+                pcall(function()
+                    local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit.KnitClient)
+                    Knit.GetService("OreSmeltingService"):ClaimSmelting()
+                end)
+                wait(1) -- Every second
+            end
+        end)
+    end
+end)
+
+-- Function to get available ores from inventory
+local function GetAvailableOres()
+    local availableOres = {}
+    
+    pcall(function()
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local Knit = require(ReplicatedStorage.Packages.Knit)
+        local CustomReplicaController = Knit.GetController("CustomReplicaController")
+        local ItemInfo = require(ReplicatedStorage.Data.Item.ItemInfo)
+        
+        local playerData = CustomReplicaController:GetReplica()
+        local inventory = playerData.Data.Items.ItemInventory.Misc
+        
+        for itemName, itemData in pairs(inventory) do
+            local itemInfo = ItemInfo[itemName]
+            if itemInfo and itemInfo.Ore then
+                local tier1Amount = itemData["1"]
+                if tier1Amount and tier1Amount > 0 then
+                    table.insert(availableOres, itemName)
+                end
+            end
+        end
+    end)
+    
+    return availableOres
+end
+
+-- Function to check if main smelting slot is empty
+local function IsMainSlotEmpty()
+    local isEmpty = true
+    
+    pcall(function()
+        local ReplicatedStorage = game:GetService("ReplicatedStorage")
+        local Knit = require(ReplicatedStorage.Packages.Knit)
+        local CustomReplicaController = Knit.GetController("CustomReplicaController")
+        
+        local playerData = CustomReplicaController:GetReplica()
+        local smeltingData = playerData.Data.SmeltingData
+        
+        isEmpty = not smeltingData.SmeltingOre.Item or smeltingData.SmeltingOre.Item == ""
+    end)
+    
+    return isEmpty
+end
+
+-- Smelt All Ores toggle
+local smeltAllOresToggle = SmeltSection:AddToggle("SmeltAllOres", {
+    Title = "Smelt All Ores",
+    Description = "Automatically adds ores to smelt.",
+    Default = false
+})
+
+smeltAllOresToggle:OnChanged(function()
+    if smeltAllOresToggle.Value then
+        spawn(function()
+            while smeltAllOresToggle.Value do
+                pcall(function()
+                    -- Check if main slot is empty
+                    if IsMainSlotEmpty() then
+                        local availableOres = GetAvailableOres()
+                        
+                        if #availableOres > 0 then
+                            -- Pick a random ore
+                            local randomOre = availableOres[math.random(1, #availableOres)]
+                            
+                            -- Add the random ore to smelting
+                            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit.KnitClient)
+                            Knit.GetService("OreSmeltingService"):AddAllOres(randomOre, 1)
+                            
+                            
+                            -- Wait a bit for the ore to be added
+                            wait(2)
+                        end
+                    end
+                end)
+                
+                wait(3) -- Check every 3 seconds
+            end
+        end)
+    end
+end)
 
 local Inventory = Tabs.Mining:AddSection("Auto Sell")
 
@@ -1794,6 +1976,7 @@ autoSellToggle:OnChanged(function()
         end)
     end
 end)
+
 -- Add Pickaxe Purchase Section
 local PickaxeSection = Tabs.Mining:AddSection("Pickaxe Purchase")
 
@@ -2019,7 +2202,7 @@ local pickaxeDropdown = PickaxeSection:AddDropdown("PickaxeSelect", {
     Title = "Select Pickaxe",
     Values = {"Loading..."},
     Multi = false,
-    Default = "Loading...",
+    Default = "Wooden Pickaxe",
     Searchable = true
 })
 
@@ -2108,13 +2291,6 @@ function UpdatePickaxeDropdown()
         
         -- Update dropdown values
         pickaxeDropdown:SetValues(pickaxeNames)
-        
-        -- If we have a next pickaxe, set it as default
-        if pickaxeData.nextPickaxe then
-            pickaxeDropdown:SetValue(pickaxeData.nextPickaxe.name)
-        else
-            pickaxeDropdown:SetValue(pickaxeNames[1])
-        end
     end)
 end
 
@@ -2233,7 +2409,7 @@ autoBuyNextToggle:OnChanged(function()
     if autoBuyNextToggle.Value then
         spawn(function()
             while autoBuyNextToggle.Value do
-                -- Reload pickaxe data to get the latest
+                -- Reload pickaxe data to get the latest info
                 local success = LoadPickaxeData()
                 
                 if success and pickaxeData.nextPickaxe then
@@ -2241,44 +2417,40 @@ autoBuyNextToggle:OnChanged(function()
                     local playerCoins = GetPlayerMiningCoins()
                     
                     if playerCoins >= pickaxeData.nextPickaxe.price then
-                        -- Update status
+                        -- Update status to show we are buying
                         nextPickaxeStatus:SetContent("Buying: " .. pickaxeData.nextPickaxe.name)
                         
                         -- Attempt to buy the next pickaxe
                         pcall(function()
-                            local args = {
-                                [1] = pickaxeData.nextPickaxe.name
-                            }
+                            -- ✅ CORRECTED: Use Knit service to buy the next best pickaxe
+                            local PickaxeService = Knit.GetService("PickaxeMerchantService")
+                            PickaxeService:BuyPickaxe(pickaxeData.nextPickaxe.name)
                             
-                            game:GetService("ReplicatedStorage").Packages.Knit.Services.PickaxeMerchantService.RF.BuyPickaxe:InvokeServer(unpack(args))
-                            
-                            -- Wait a moment before reloading data
+                            -- Wait a moment for the purchase to process
                             wait(1)
                             
-                            -- Reload data after purchase
+                            -- Reload all data and update UI after purchase
                             LoadPickaxeData()
-                            
-                            -- Update UI
                             UpdateNextPickaxeStatus()
                             UpdateEquipStatus()
                             UpdatePickaxeDropdown()
                         end)
                     else
-                        -- Update status with affordability info
+                        -- Not enough coins, update status and wait
                         UpdateNextPickaxeStatus()
                     end
                 else
-                    -- Handle case where we can't load data or no pickaxes left
+                    -- Handle cases where data fails to load or all pickaxes are owned
                     if not success then
                         nextPickaxeStatus:SetContent("Error loading pickaxe data")
                     else
                         nextPickaxeStatus:SetContent("You own all pickaxes!")
-                        autoBuyNextToggle:SetValue(false) -- Turn off toggle if all pickaxes owned
+                        autoBuyNextToggle:SetValue(false) -- Turn off toggle
                         break
                     end
                 end
                 
-                wait(5) -- Wait before checking again
+                wait(5) -- Wait 5 seconds before checking again
             end
         end)
     end
