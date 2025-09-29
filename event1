@@ -1155,6 +1155,310 @@ CustomMatchToggle:OnChanged(function(enabled)
     end)
 end)
 
+
+-- Services
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Knit = require(ReplicatedStorage.Packages.Knit)
+
+-- Player
+local player = Players.LocalPlayer
+
+-- Get all possible items from LimitedMerchant module (Pirate Merchant and Lost Merchant)
+local function getAllItems()
+    local LimitedMerchant = require(ReplicatedStorage.Data.LimitedMerchant)
+    local allItems = {}
+    local slotItemMap = {} -- Track items by slot and title to avoid duplicates
+    
+    local merchantNames = {"Orc Merchant"}
+    
+    for _, merchantName in ipairs(merchantNames) do
+        local merchantData = LimitedMerchant[merchantName]
+        
+        if merchantData and merchantData.Items then
+            for slotIndex, itemList in pairs(merchantData.Items) do
+                for itemIndex, item in ipairs(itemList) do
+                    local title = item.Title or "Unknown"
+                    local key = merchantName .. ":" .. slotIndex .. ":" .. title
+                    
+                    -- Only add if this exact item in this slot hasn't been added yet
+                    if not slotItemMap[key] then
+                        local itemName = string.format("%s - %s (Slot %s) (%.0f %s)",
+                            title,
+                            merchantName,
+                            slotIndex,
+                            item.Price or 0,
+                            typeof(item.Currency) == "string" and item.Currency or (typeof(item.Currency) == "table" and item.Currency.Item or "Unknown Currency")
+                        )
+                        
+                        table.insert(allItems, {
+                            name = itemName,
+                            merchant = merchantName,
+                            slot = tonumber(slotIndex),
+                            index = itemIndex,
+                            raw = item
+                        })
+                        
+                        slotItemMap[key] = true
+                    end
+                end
+            end
+        end
+    end
+
+    return allItems
+end
+
+-- Get live replica data (used to check if item is currently in merchant and has stock)
+local function getLiveStockData()
+    local ReplicaController = require(ReplicatedStorage.ReplicaController)
+    ReplicaController.RequestData()
+
+    local startTime = tick()
+    local replica
+    repeat
+        task.wait(0.1)
+        local CustomReplicaController = Knit.GetController("CustomReplicaController")
+        replica = CustomReplicaController and CustomReplicaController:GetReplica()
+    until replica or tick() - startTime > 5
+
+    local liveData = {}
+    
+    if replica and replica.Data and replica.Data.LimitedMerchant then
+        -- Get data for both Frozen Merchant and Frontman Merchant
+        local merchantNames = {"Orc Merchant"}
+
+        for _, merchantName in ipairs(merchantNames) do
+            local merchantData = replica.Data.LimitedMerchant[merchantName]
+            
+            if merchantData and merchantData.Items then
+                for slotIndex, itemData in pairs(merchantData.Items) do
+                    -- Get the actual item details from the LimitedMerchant module
+                    local LimitedMerchant = require(ReplicatedStorage.Data.LimitedMerchant)
+                    local currentItem = LimitedMerchant[merchantName] and 
+                                      LimitedMerchant[merchantName].Items and 
+                                      LimitedMerchant[merchantName].Items[slotIndex] and 
+                                      LimitedMerchant[merchantName].Items[slotIndex][itemData.Index]
+                    
+                    -- Store more detailed information including the title for easier matching
+                    liveData[merchantName .. ":" .. slotIndex] = {
+                        stock = itemData.Stock,
+                        index = itemData.Index,
+                        title = currentItem and currentItem.Title or "Unknown",
+                        fullItem = currentItem
+                    }
+                end
+            end
+        end
+    end
+
+    return liveData
+end
+
+-- UI Section
+local MerchantSection = Tabs.Trial:AddSection("Merchant")
+
+-- Get all items list and build name list + map
+local allItemDataList = getAllItems()
+local allItemNames = {}
+local allItemDataMap = {}
+
+for _, itemInfo in ipairs(allItemDataList) do
+    table.insert(allItemNames, itemInfo.name)
+    allItemDataMap[itemInfo.name] = itemInfo
+end
+
+table.sort(allItemNames)
+
+-- Dropdown UI (before toggle)
+local MerchantDropdown = MerchantSection:AddDropdown("MerchantSelect", {
+    Title = "Select Item(s)",
+    Description = "Choose items to auto-buy from the Merchants.",
+    Values = allItemNames,
+    Multi = true,
+    Searchable = true,
+    Default = {}
+})
+
+-- Variables to hold selected items
+local selectedMerchantItems = {}
+
+-- Toggle for Auto Buying (below dropdown)
+local AutoBuyToggle = MerchantSection:AddToggle("AutoBuy", {
+    Title = "Auto Buy Items",
+    Default = false
+})
+
+-- Paragraph to show selected items BELOW the toggle
+local SelectedItemsParagraph = MerchantSection:Paragraph("SelectedItemsDisplay", {
+    Title = "Selected Items",
+    Content = "None selected",
+    TitleAlignment = "Middle",
+    ContentAlignment = Enum.TextXAlignment.Left
+})
+
+-- Status paragraph to show recent activity
+local StatusParagraph = MerchantSection:Paragraph("StatusDisplay", {
+    Title = "Status",
+    Content = "Waiting to start...",
+    TitleAlignment = "Middle",
+    ContentAlignment = Enum.TextXAlignment.Left
+})
+
+-- Dropdown selection changed handler
+MerchantDropdown:OnChanged(function(value)
+    selectedMerchantItems = value
+
+    local selectedList = {}
+    for itemName, isSelected in pairs(value) do
+        if isSelected then
+            table.insert(selectedList, itemName)
+        end
+    end
+
+    if #selectedList > 0 then
+        SelectedItemsParagraph:SetValue(table.concat(selectedList, "\n"))
+    else
+        SelectedItemsParagraph:SetValue("None selected")
+    end
+end)
+
+-- Auto Buy Loop
+AutoBuyToggle:OnChanged(function(enabled)
+    if enabled then
+        StatusParagraph:SetValue("Starting auto-buy loop...")
+        
+        task.spawn(function()
+            while AutoBuyToggle.Value do
+                local liveData = getLiveStockData()
+                local purchasesMade = false
+                
+                -- Check for each selected item
+                for itemName, isSelected in pairs(selectedMerchantItems) do
+                    if isSelected then
+                        local info = allItemDataMap[itemName]
+                        
+                        if info then
+                            local merchantName = info.merchant
+                            local slot = info.slot
+                            local merchantSlotKey = merchantName .. ":" .. tostring(slot)
+                            local liveInfo = liveData[merchantSlotKey]
+                            
+                            -- Check if this slot has an item with stock
+                            if liveInfo and liveInfo.stock and liveInfo.stock > 0 then
+                                -- Check if the current item in this slot is the one we want to buy
+                                -- Compare titles for safer matching
+                                local itemTitle = info.raw.Title
+                                if itemTitle == liveInfo.title then
+                                    StatusParagraph:SetValue("Found selected item: " .. itemTitle .. "\nAttempting purchase...")
+                                    
+                                    local success, result = pcall(function()
+                                        return ReplicatedStorage.Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(merchantName, slot)
+                                    end)
+                                    
+                                    if success then
+                                        StatusParagraph:SetValue("Successfully purchased: " .. itemTitle)
+                                        purchasesMade = true
+                                    else
+                                        StatusParagraph:SetValue("Failed to purchase: " .. itemTitle .. "\nError: " .. tostring(result))
+                                    end
+                                    
+                                    -- Short delay after purchasing
+                                    task.wait(0.5)
+                                end
+                            end
+                        end
+                    end
+                end
+                
+                if not purchasesMade then
+                    StatusParagraph:SetValue("Checking for selected items...\nLast check: " .. os.date("%X"))
+                end
+                
+                -- Wait before next check cycle
+                task.wait(1.5)
+            end
+            
+            StatusParagraph:SetValue("Auto-buy stopped.")
+        end)
+    else
+        StatusParagraph:SetValue("Auto-buy disabled.")
+    end
+end)
+
+local TrialVaultSection = Tabs.Trial:AddSection("Kingdom Chest")
+
+local KingdomChestStatus = TrialVaultSection:Paragraph("KingdomChestStatus", {
+    Title = "Lost Chest Key Amount",
+    Content = "Loading..."
+})
+
+local AutoOpenKingdomChestToggle = TrialVaultSection:AddToggle("AutoOpenVault", {
+    Title = "Auto Open Kingdom Chest",
+    Description = "Automatically opens the Kingdom Chest when you can afford it.",
+    Default = false
+})
+
+local function parseAmount1(amtText1)
+    local numStr = amtText1:match("x(.+)")
+    if not numStr then return 0 end
+    if numStr:find("k") then
+        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
+        return baseNum and (baseNum * 1000) or 0
+    else
+        return tonumber(numStr) or 0
+    end
+end
+
+AutoOpenKingdomChestToggle:OnChanged(function(enabled)
+    if enabled then
+        task.spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            while AutoOpenKingdomChestToggle.Value do
+                local player = game.Players.LocalPlayer
+                local KeyObject = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Lost Chest Key/1"]
+                
+                if KeyObject and KeyObject:FindFirstChild("ButtonDisplay") and KeyObject.ButtonDisplay:FindFirstChild("Amt") then
+                    local amtText1 = KeyObject.ButtonDisplay.Amt.Text
+                    local amount = parseAmount1(amtText1)
+                    KingdomChestStatus:SetValue(amtText1)
+                    
+                    if amount >= 1 then
+                        pcall(function()
+                            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit.KnitClient)
+                            Knit.GetService("ChestService"):Open("KingdomChest")
+                        end)
+                        task.wait(0.25) -- Fast check when gold is available
+                    else
+                        KingdomChestStatus:SetValue("No Lost Chest Keys")
+                        task.wait(1) -- Slower check when no gold
+                    end
+                else
+                    KingdomChestStatus:SetValue("No Lost Chest Keys")
+                    task.wait(1) 
+                end
+            end
+        end)
+    end
+end)
+
+-- Passive Status Updater (even when toggle is off)
+task.spawn(function()
+    while true do
+        local player = game:GetService("Players").LocalPlayer
+        local KeyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Lost Chest Key/1")
+        
+        if KeyObject and KeyObject:FindFirstChild("ButtonDisplay") and KeyObject.ButtonDisplay:FindFirstChild("Amt") then
+            KingdomChestStatus:SetValue(KeyObject.ButtonDisplay.Amt.Text)
+        else
+            KingdomChestStatus:SetValue("No Lost Chest Keys")
+        end
+        
+        task.wait(1)
+    end
+end)
+
+
 -- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
