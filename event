@@ -2062,25 +2062,6 @@ SaveManager:SetIgnoreIndexes{}
 InterfaceManager:SetFolder("FluentScriptHub")
 SaveManager:SetFolder("FluentScriptHub/specific-game")
 
--- Add Anti-AFK button to Settings tab
-local antiafk = Tabs.Settings:AddSection("Anti AFK")
-
-Tabs.Settings:AddButton({
-    Title = "Anti AFK",
-    Description = "Prevents being kicked from inactivity.",
-    Callback = function()
-        -- First click immediately
-        clickTopRight()
-
-        -- Add periodic clicking (every 5 minutes) to prevent AFK disconnection
-        task.spawn(function()
-            while true do
-                task.wait(300) -- 5 minutes
-                clickTopRight()
-            end
-        end)
-    end
-})
 
 InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 SaveManager:BuildConfigSection(Tabs.Settings)
