@@ -1040,7 +1040,7 @@ AutoDragonTrialToggle:OnChanged(function()
 
                             ArmWrestleService:RequestEndFight("SkipEnd")
 
-                            task.wait(3)
+                            task.wait(2)
                         end
 
                         -- Join the Medieval trial and start spamming crits
@@ -1054,7 +1054,7 @@ AutoDragonTrialToggle:OnChanged(function()
 
                         -- If we previously disabled the toggles, it's time to re-enable them
                         if togglesDisabled then
-                            wait(5) -- Wait a bit after the trial ends
+                            wait(2) -- Wait a bit after the trial ends
 
                             -- Teleport back to the selected NPC zone
                             teleportToSelectedNPCZone()
@@ -1079,45 +1079,82 @@ AutoDragonTrialToggle:OnChanged(function()
         stopCritThreads()
     end
 end)
-local TrialAutoFightToggle = DragonTrialSection:AddToggle("TrialAutoFight", {
-    Title = "Auto Click in Trial",
+
+-- Get necessary services and controllers
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Knit = require(ReplicatedStorage.Packages.Knit)
+
+-- We need to wait for Knit to be started and all controllers to be available
+local ArmWrestleController -- We need the ArmWrestleController for its MouseClick method
+local AutoFightController
+local AutoUIController
+repeat
+    task.wait()
+    ArmWrestleController = Knit.GetController("ArmWrestleController", true)
+    AutoFightController = Knit.GetController("AutoFightController", true)
+    AutoUIController = Knit.GetController("AutoUIController", true)
+until ArmWrestleController and AutoFightController and AutoUIController
+
+-- A variable to store the game's original CPS value so we can restore it
+local originalClicksPerSec = nil
+local customAutoClickActive = false
+
+-- Create toggle
+local CustomMatchToggle = DragonTrialSection:AddToggle("NativeAutoFight", {
+    Title = "Trial Auto Click",
     Description = "This will click for you during the trial. This works in the main game as well, but not nearly as fast as the Auto Click/Crit toggle.",
     Default = false
 })
 
--- Store the custom connection globally
-_G.TrialAutoFightConnection = _G.TrialAutoFightConnection or nil
+local function performCustomClicks()
+    while customAutoClickActive do
+        if ArmWrestleController.Fighting and ArmWrestleController.IsStarted then
+            ArmWrestleController.MouseClick(Enum.UserInputType.MouseButton1, false)
+        end
+        task.wait(0.05) -- Attempt to click 1000 times per second
+    end
+end
 
-TrialAutoFightToggle:OnChanged(function(enabled)
+CustomMatchToggle:OnChanged(function(enabled)
     pcall(function()
-        local ReplicatedStorage = game:GetService("ReplicatedStorage")
-        local RunService = game:GetService("RunService")
-        
-        -- Get the Knit framework and ArmWrestleController
-        local Knit = require(ReplicatedStorage.Packages.Knit)
-        local ArmWrestleController = Knit.GetController("ArmWrestleController")
-
         if enabled then
-            -- Set ultra-high click rate (100,000 clicks per second)
-            local clicksPerSecond = 100000
-            local clickDelay = 1 / clicksPerSecond
-            local lastClicked = tick()
-            
-            -- Create custom heartbeat connection that ALWAYS runs in background
-            _G.TrialAutoFightConnection = RunService.Heartbeat:Connect(function()
-                -- Only click if we're in a match and it's started
-                if not ArmWrestleController.IsStarted then return end
-                
-                -- Check if enough time has passed
-                if tick() - lastClicked < clickDelay then return end
-                lastClicked = tick()
-                
-                -- Perform the click
-                ArmWrestleController.MouseClick(Enum.UserInputType.MouseButton1, false)
+            -- Store the original CPS value if we haven't already
+            if originalClicksPerSec == nil then
+                originalClicksPerSec = AutoUIController.ClicksPerSec
+            end
+
+            local success, err = pcall(function()
+
+                AutoUIController.ClicksPerSec = 1000
+                AutoFightController:StartAutoFight() 
             end)
+
+            if not success or not AutoFightController.Active then
+                customAutoClickActive = true
+                if originalClicksPerSec ~= nil then
+                    AutoUIController.ClicksPerSec = originalClicksPerSec
+                end
+                task.spawn(performCustomClicks)
+            else
+                customAutoClickActive = false
+            end
+
+        else
+            -- Always try to stop native auto-fight first
+            pcall(function()
+                AutoFightController:StopAutoFight(true) -- Use colon for method call
+            end)
+
+            customAutoClickActive = false
+
+            if originalClicksPerSec ~= nil then
+                AutoUIController.ClicksPerSec = originalClicksPerSec
+                originalClicksPerSec = nil
+            end
         end
     end)
 end)
+
 -- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
