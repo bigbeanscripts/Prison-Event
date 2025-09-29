@@ -1159,11 +1159,6 @@ TrialAutoFightToggle:OnChanged(function(enabled)
         local ArmWrestleController = Knit.GetController("ArmWrestleController")
 
         if enabled then
-            -- Check if we are actually in a fight
-            if not ArmWrestleController.Fighting then
-                return
-            end
-
             -- Disconnect any existing connection
             if _G.TrialAutoFightConnection then
                 _G.TrialAutoFightConnection:Disconnect()
@@ -1174,9 +1169,9 @@ TrialAutoFightToggle:OnChanged(function(enabled)
             local clickDelay = 1 / clicksPerSecond
             local lastClicked = tick()
             
-            -- Create custom heartbeat connection for ultra-fast clicking
+            -- Create custom heartbeat connection that ALWAYS runs in background
             _G.TrialAutoFightConnection = RunService.Heartbeat:Connect(function()
-                -- Check if we're still in a match and it's started
+                -- Only click if we're in a match and it's started
                 if not ArmWrestleController.IsStarted then return end
                 
                 -- Check if enough time has passed
