@@ -635,21 +635,6 @@ end
 -- Auto Click toggle handler
 AutoClickToggle:OnChanged(function()
     if AutoClickToggle.Value then
-        -- Stop existing threads and cleanup
-        for _, thread in pairs(autoClickThreads) do
-            if typeof(thread) == "thread" then
-                task.cancel(thread)
-            elseif typeof(thread) == "table" then
-                thread.active = false
-            end
-        end
-        autoClickThreads = {}
-        
-        -- Stop any existing cleanup connections
-        if cleanupConnections.autoClick then
-            cleanupConnections.autoClick:Disconnect()
-        end
-        
         -- Spawn new click threads
         task.spawn(function()
             for i = 1, 500 do
@@ -679,25 +664,6 @@ AutoClickToggle:OnChanged(function()
                 end
             end
         end)
-    else
-        -- Disable all click threads
-        for _, thread in pairs(autoClickThreads) do
-            if typeof(thread) == "thread" then
-                task.cancel(thread)
-            elseif typeof(thread) == "table" then
-                thread.active = false
-            end
-        end
-        autoClickThreads = {}
-        
-        -- Stop cleanup timer
-        if cleanupConnections.autoClick then
-            task.cancel(cleanupConnections.autoClick)
-            cleanupConnections.autoClick = nil
-        end
-        
-        -- Final cleanup
-        cleanupRequests()
     end
 end)
 
@@ -707,17 +673,6 @@ AutoFightToggle:OnChanged(function()
         -- First try to teleport to correct zone if needed
         local selectedName = modelDropdown.Value
         teleportToNpcZone(selectedName)
-        
-        -- Stop previous threads and cleanup
-        for _, flag in pairs(autoFightThreads) do
-            flag.active = false
-        end
-        autoFightThreads = {}
-        
-        -- Stop any existing cleanup connections
-        if cleanupConnections.autoFight then
-            cleanupConnections.autoFight:Disconnect()
-        end
         
         -- Spawn threads for repeated boss fights
         for i = 1, 500 do
@@ -760,21 +715,6 @@ AutoFightToggle:OnChanged(function()
                 end
             end
         end)
-    else
-        -- Stop all fight threads
-        for _, flag in pairs(autoFightThreads) do
-            flag.active = false
-        end
-        autoFightThreads = {}
-        
-        -- Stop cleanup timer
-        if cleanupConnections.autoFight then
-            task.cancel(cleanupConnections.autoFight)
-            cleanupConnections.autoFight = nil
-        end
-        
-        -- Final cleanup
-        cleanupRequests()
     end
 end)
 
@@ -1139,15 +1079,14 @@ AutoDragonTrialToggle:OnChanged(function()
         stopCritThreads()
     end
 end)
-
 local TrialAutoFightToggle = DragonTrialSection:AddToggle("TrialAutoFight", {
     Title = "Auto Click in Trial",
     Description = "This will click for you during the trial. This works in the main game as well, but not nearly as fast as the Auto Click/Crit toggle.",
     Default = false
 })
 
--- Store the custom connection globally so we can disconnect it later
-_G.TrialAutoFightConnection = nil
+-- Store the custom connection globally
+_G.TrialAutoFightConnection = _G.TrialAutoFightConnection or nil
 
 TrialAutoFightToggle:OnChanged(function(enabled)
     pcall(function()
@@ -1159,11 +1098,6 @@ TrialAutoFightToggle:OnChanged(function(enabled)
         local ArmWrestleController = Knit.GetController("ArmWrestleController")
 
         if enabled then
-            -- Disconnect any existing connection
-            if _G.TrialAutoFightConnection then
-                _G.TrialAutoFightConnection:Disconnect()
-            end
-            
             -- Set ultra-high click rate (100,000 clicks per second)
             local clicksPerSecond = 100000
             local clickDelay = 1 / clicksPerSecond
@@ -1181,16 +1115,9 @@ TrialAutoFightToggle:OnChanged(function(enabled)
                 -- Perform the click
                 ArmWrestleController.MouseClick(Enum.UserInputType.MouseButton1, false)
             end)
-        else
-            -- Disconnect the custom connection when toggle is turned off
-            if _G.TrialAutoFightConnection then
-                _G.TrialAutoFightConnection:Disconnect()
-                _G.TrialAutoFightConnection = nil
-            end
         end
     end)
 end)
-
 -- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
