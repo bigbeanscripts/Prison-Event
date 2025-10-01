@@ -1839,6 +1839,31 @@ end)
 
 StartMineResetMonitoring()
 
+spawn(function()
+    while true do
+        wait(25) -- Wait 25 seconds
+        
+        -- Check if mine along the way toggle is on
+        if pathMiningToggle.Value then
+            -- Turn it off and back on to refresh
+            pathMiningToggle:SetValue(false)
+            wait(1)
+            pathMiningToggle:SetValue(true)
+            wait(0.1) -- Small delay
+            pathMiningToggle:SetValue(true)
+        end
+    end
+end)
+
+
+-- Minimal garbage collector
+spawn(function()
+    while wait(5) do
+        pcall(function() collectgarbage("collect") end)
+        gcinfo()
+    end
+end)
+
 -- Add Smelt Ores Section
 local SmeltSection = Tabs.Mining:AddSection("Smelt Ores")
 
