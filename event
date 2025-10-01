@@ -1858,7 +1858,7 @@ end)
 
 -- Minimal garbage collector
 spawn(function()
-    while wait(5) do
+    while wait(3) do 
         pcall(function() collectgarbage("collect") end)
         gcinfo()
     end
