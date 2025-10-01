@@ -1,4 +1,4 @@
--- ✅ Extra egg names you always want included
+
 local extraEggNames = {
     "OrangeSpikedCrystal",
     "GemstoneSpiked",
@@ -54,7 +54,6 @@ local Library = loadstring(game:HttpGet("https://github.com/ActualMasterOogway/F
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/bigbeanscripts/Pet-Warriors/refs/heads/main/test"))()
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/ActualMasterOogway/Fluent-Renewed/master/Addons/InterfaceManager.luau"))()
 
-
 local Window = Library:Window{
     Title = "Mining Event",
     SubTitle = "By Duckie",
@@ -74,7 +73,6 @@ local Tabs = {
     Tower = Window:AddTab({ Title = "Tower", Icon = "castle" }),
     Merchant = Window:AddTab({ Title = "Merchant", Icon = "phosphor-shopping-cart-fill" }),
     Wheel = Window:AddTab({ Title = "Miners Fortune Wheel", Icon = "ferris-wheel" }),
-    Trial = Window:AddTab({ Title = "Trial", Icon = "trophy" }),
     Mining = Window:AddTab({ Title = "Mining", Icon = "pickaxe" }),
 }
 
@@ -635,6 +633,21 @@ end
 -- Auto Click toggle handler
 AutoClickToggle:OnChanged(function()
     if AutoClickToggle.Value then
+        -- Stop existing threads and cleanup
+        for _, thread in pairs(autoClickThreads) do
+            if typeof(thread) == "thread" then
+                task.cancel(thread)
+            elseif typeof(thread) == "table" then
+                thread.active = false
+            end
+        end
+        autoClickThreads = {}
+        
+        -- Stop any existing cleanup connections
+        if cleanupConnections.autoClick then
+            cleanupConnections.autoClick:Disconnect()
+        end
+        
         -- Spawn new click threads
         task.spawn(function()
             for i = 1, 500 do
@@ -664,6 +677,25 @@ AutoClickToggle:OnChanged(function()
                 end
             end
         end)
+    else
+        -- Disable all click threads
+        for _, thread in pairs(autoClickThreads) do
+            if typeof(thread) == "thread" then
+                task.cancel(thread)
+            elseif typeof(thread) == "table" then
+                thread.active = false
+            end
+        end
+        autoClickThreads = {}
+        
+        -- Stop cleanup timer
+        if cleanupConnections.autoClick then
+            task.cancel(cleanupConnections.autoClick)
+            cleanupConnections.autoClick = nil
+        end
+        
+        -- Final cleanup
+        cleanupRequests()
     end
 end)
 
@@ -673,6 +705,17 @@ AutoFightToggle:OnChanged(function()
         -- First try to teleport to correct zone if needed
         local selectedName = modelDropdown.Value
         teleportToNpcZone(selectedName)
+        
+        -- Stop previous threads and cleanup
+        for _, flag in pairs(autoFightThreads) do
+            flag.active = false
+        end
+        autoFightThreads = {}
+        
+        -- Stop any existing cleanup connections
+        if cleanupConnections.autoFight then
+            cleanupConnections.autoFight:Disconnect()
+        end
         
         -- Spawn threads for repeated boss fights
         for i = 1, 500 do
@@ -715,6 +758,21 @@ AutoFightToggle:OnChanged(function()
                 end
             end
         end)
+    else
+        -- Stop all fight threads
+        for _, flag in pairs(autoFightThreads) do
+            flag.active = false
+        end
+        autoFightThreads = {}
+        
+        -- Stop cleanup timer
+        if cleanupConnections.autoFight then
+            task.cancel(cleanupConnections.autoFight)
+            cleanupConnections.autoFight = nil
+        end
+        
+        -- Final cleanup
+        cleanupRequests()
     end
 end)
 
@@ -802,11 +860,92 @@ end)
 
 local TowerSection = Tabs.Tower:AddSection("Mining Tower")
 
--- Prison Cave Buttons
+-- Tower Status
+local TowerKeysStatus = TowerSection:Paragraph("TowerKeysStatus", {
+    Title = "Tower Status",
+    Content = "Loading..."
+})
+
+-- Function to parse tower key amount
+local function parseTowerKeyAmount(amtText)
+    local numStr = amtText:match("x(.+)")
+    if not numStr then return 0 end
+    if numStr:find("k") then
+        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
+        return baseNum and (baseNum * 1000) or 0
+    else
+        return tonumber(numStr) or 0
+    end
+end
+
+-- Check if currently in a tower
+local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+Knit.OnStart():await()
+
+local TowerController = Knit.GetController("TowerController")
+local TowerService = Knit.GetService("TowerService")
+
+-- Function to check tower status
+local function CheckTowerStatus()
+    local inTower = false
+    local towerName = "None"
+    
+    -- Method 1: Check TowerService for ongoing tower
+    pcall(function()
+        local playerData = Knit.GetController("CustomReplicaController"):GetReplica()
+        if playerData and playerData.Data and playerData.Data.OngoingTower then
+            inTower = true
+            towerName = playerData.Data.OngoingTower
+        end
+    end)
+    
+    -- Method 2: Check if tower UI is visible
+    if not inTower then
+        pcall(function()
+            local towerHud = game.Players.LocalPlayer.PlayerGui.GameUI.Hud.Tower
+            if towerHud and towerHud.Visible then
+                inTower = true
+                towerName = towerHud.TowerName.Text or "Unknown Tower"
+            end
+        end)
+    end
+    
+    return inTower, towerName
+end
+
+-- Passive Status Updater
+task.spawn(function()
+    while true do
+        local player = game.Players.LocalPlayer
+        local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Mining Tower Key/1")
+
+        local keyAmount = "No Keys"
+        if keyObject and keyObject:FindFirstChild("ButtonDisplay") and keyObject.ButtonDisplay:FindFirstChild("Amt") then
+            keyAmount = keyObject.ButtonDisplay.Amt.Text
+        end
+
+        local inTower, towerName = CheckTowerStatus()
+        local statusText = "Keys: " .. keyAmount .. "\nIn Tower: " .. (inTower and "Yes (" .. towerName .. ")" or "No")
+
+        TowerKeysStatus:SetValue(statusText)
+        task.wait(1)
+    end
+end)
+
+-- Manual Tower Buttons
 TowerSection:AddButton({
     Title = "Use Mining Keys (1x)",
     Description = "Use the Mining Key once.",
     Callback = function()
+        -- End any ongoing fight before entering tower
+        pcall(function()
+            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+            local ArmWrestleService = Knit.GetService("ArmWrestleService")
+            ArmWrestleService:RequestEndFight("SkipEnd")
+        end)
+        
+        wait(0.5) -- Brief wait after ending fight
+        
         local args = {
             [1] = "MiningTower",
             [2] = false
@@ -819,6 +958,15 @@ TowerSection:AddButton({
     Title = "Use All Mining Keys (250x)",
     Description = "Use All Mining Keys (max 250 at a time).",
     Callback = function()
+        -- End any ongoing fight before entering tower
+        pcall(function()
+            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+            local ArmWrestleService = Knit.GetService("ArmWrestleService")
+            ArmWrestleService:RequestEndFight("SkipEnd")
+        end)
+        
+        wait(0.5) -- Brief wait after ending fight
+        
         local args = {
             [1] = "MiningTower",
             [2] = true
@@ -826,6 +974,134 @@ TowerSection:AddButton({
         game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
     end
 })
+-- Auto Tower Toggle
+local AutoTowerToggle = TowerSection:AddToggle("AutoTower", {
+    Title = "Auto Tower (250 keys)",
+    Description = "Will auto complete the tower doing 250 keys each time. Temporarily disables Auto Fight/Click.",
+    Default = false
+})
+
+AutoTowerToggle:OnChanged(function()
+    if AutoTowerToggle.Value then
+        spawn(function()
+            -- Initialize state variables for this session
+            local player = game.Players.LocalPlayer
+            local togglesDisabled = false
+            local wasAutoFightOn = false
+            local wasAutoClickOn = false
+            local previousKeyAmount = 0
+
+            while AutoTowerToggle.Value do
+                local inTower, _ = CheckTowerStatus()
+
+                -- Check current key amount
+                local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Mining Tower Key/1")
+                local currentKeyAmount = 0
+
+                if keyObject and keyObject:FindFirstChild("ButtonDisplay") and keyObject.ButtonDisplay:FindFirstChild("Amt") then
+                    local amtText = keyObject.ButtonDisplay.Amt.Text
+                    currentKeyAmount = parseTowerKeyAmount(amtText)
+                end
+
+                local hasKeys = currentKeyAmount > 0
+
+                -- Handle key state transitions
+                if hasKeys and not togglesDisabled then
+                    -- Just got keys, disable other toggles
+                    wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
+                    wasAutoClickOn = AutoClickToggle and AutoClickToggle.Value or false
+
+                    if wasAutoFightOn then AutoFightToggle:SetValue(false) end
+                    if wasAutoClickOn then AutoClickToggle:SetValue(false) end
+
+                    togglesDisabled = true
+                    wait(1) -- Wait for toggles to fully disable
+                elseif not hasKeys and togglesDisabled and not inTower then
+                    -- Just ran out of keys AND not in tower, re-enable toggles
+                    wait(2) -- Wait a bit
+
+                    -- Re-enable toggles if they were on before
+                    if wasAutoFightOn and AutoFightToggle then AutoFightToggle:SetValue(true) end
+                    if wasAutoClickOn and AutoClickToggle then AutoClickToggle:SetValue(true) end
+
+                    -- Reset state flags for the next cycle
+                    wasAutoFightOn = false
+                    wasAutoClickOn = false
+                    togglesDisabled = false
+                end
+
+                if not inTower and hasKeys then
+                    -- Has keys and not in tower, enter tower
+                    -- End any ongoing fight before entering tower
+                    pcall(function()
+                        local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+                        local ArmWrestleService = Knit.GetService("ArmWrestleService")
+                        ArmWrestleService:RequestEndFight("SkipEnd")
+                    end)
+
+                    wait(0.5) -- Brief wait after ending fight
+
+                    pcall(function()
+                        local args = {
+                            [1] = "MiningTower",
+                            [2] = true
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+                    end)
+                end
+
+                previousKeyAmount = currentKeyAmount
+                wait(hasKeys and 1 or 5) -- Check more frequently when we have keys
+            end
+
+            -- ✅ Re-enable toggles when manually turned off (only if not in tower)
+            if togglesDisabled then
+                wait(1) -- Brief delay to ensure proper state
+                
+                local inTower, _ = CheckTowerStatus()
+                if not inTower then
+                    -- Re-enable toggles if they were on before
+                    if wasAutoFightOn and AutoFightToggle then AutoFightToggle:SetValue(true) end
+                    if wasAutoClickOn and AutoClickToggle then AutoClickToggle:SetValue(true) end
+                end
+            end
+        end)
+    end
+end)
+
+-- Auto Click for Tower
+local AutoClickTowerToggle = TowerSection:AddToggle("AutoClickTower", {
+    Title = "Auto Click",
+    Description = "Auto clicks during tower fights. This is because the normal auto click/crit will break the tower.",
+    Default = false
+})
+
+-- Variables for auto click
+local customAutoClickActive = false
+
+-- Function to perform custom clicks
+local function performCustomClicks()
+    while customAutoClickActive do
+        pcall(function()
+            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+            local ArmWrestleController = Knit.GetController("ArmWrestleController")
+
+            if ArmWrestleController and ArmWrestleController.Fighting and ArmWrestleController.IsStarted then
+                ArmWrestleController.MouseClick(Enum.UserInputType.MouseButton1, false)
+            end
+        end)
+        task.wait(0.05) -- Click fast
+    end
+end
+
+AutoClickTowerToggle:OnChanged(function(enabled)
+    if enabled then
+        customAutoClickActive = true
+        task.spawn(performCustomClicks)
+    else
+        customAutoClickActive = false
+    end
+end)
 
 
 
@@ -912,553 +1188,6 @@ AutoGhostFortuneToggle:OnChanged(function()
         end)
     end
 end)
-
-local DragonTrialSection = Tabs.Trial:AddSection("Medieval Trial")
--- Auto join trial toggle
-local AutoDragonTrialToggle = DragonTrialSection:AddToggle("AutoDragonTrial", {
-    Title = "Auto Join Medieval Trial",
-    Description = "Temporarily disables Auto Fight/Click. Re-enables them after trial ends.",
-    Default = false
-})
-
--- Crit & Click Threads Control
-local RequestCritHit = KnitServices:WaitForChild("ArmWrestleService"):WaitForChild("RF"):WaitForChild("RequestCritHit")
-local critThreads = {}
-local critLoopRunning = false
-
--- Start Crit Threads
-local function startCritThreads()
-    if critLoopRunning then return end
-    critLoopRunning = true
-
-    for i = 1, 10 do
-        local threadIndex = i
-        critThreads[threadIndex] = true
-
-        task.spawn(function()
-            while critThreads[threadIndex] and AutoDragonTrialToggle.Value do
-                pcall(function()
-                    RequestCritHit:InvokeServer()
-                end)
-                task.wait(0.1) -- Spam crits every 0.1 seconds
-            end
-        end)
-    end
-end
-
--- Stop Crit Threads
-local function stopCritThreads()
-    critLoopRunning = false
-    for i = 1, #critThreads do
-        critThreads[i] = false
-    end
-    critThreads = {}
-end
-
--- ✅ UPDATED: Teleport function now dynamically checks ALL zones
-local function teleportToSelectedNPCZone()
-    local selectedNPC = modelDropdown.Value
-    if not selectedNPC then return end
-
-    local targetTeleportPart = nil
-    local armWrestlingRoot = workspace.GameObjects.ArmWrestling
-
-    -- Loop through all folders (zones) inside the ArmWrestling folder
-    for _, zoneFolder in ipairs(armWrestlingRoot:GetChildren()) do
-        if zoneFolder:IsA("Model") and zoneFolder:FindFirstChild("NPC") then
-            -- Check if the selected NPC exists in this zone
-            if zoneFolder.NPC:FindFirstChild(selectedNPC) then
-                -- Found it! Now find the corresponding teleport location in the main Zones folder
-                local mainZone = workspace.Zones:FindFirstChild(zoneFolder.Name)
-                if mainZone then
-                    targetTeleportPart = mainZone:FindFirstChild("Interactables", true):FindFirstChild("Teleports", true):FindFirstChild("Locations", true):FindFirstChild("Spawn")
-                    break -- Exit the loop since we found our target
-                end
-            end
-        end
-    end
-    
-    -- Teleport to the determined zone if a valid location was found
-    if targetTeleportPart then
-        pcall(function()
-            local args = { [1] = targetTeleportPart }
-            game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(args))
-        end)
-    else
-        warn("Could not find a teleport location for NPC:", selectedNPC)
-    end
-end
--- Main Toggle Logic
-AutoDragonTrialToggle:OnChanged(function()
-    if AutoDragonTrialToggle.Value then
-        spawn(function()
-            -- Initialize state variables for this session
-            local player = game.Players.LocalPlayer
-            local lastJoinAttemptTime = 0
-            local togglesDisabled = false
-            local wasAutoFightOn = false
-            local wasAutoClickOn = false
-
-            while AutoDragonTrialToggle.Value do
-                local success, timerGui = pcall(function()
-                    return player.PlayerGui.Misc.Trials.Timer.Medieval.Timer
-                end)
-
-                if success and timerGui then
-                    if timerGui.Text == "Ready!" then
-                        -- Cooldown to prevent spamming joins after a trial ends
-                        if os.time() - lastJoinAttemptTime < 180 then
-                            wait(1)
-                            continue 
-                        end
-
-                        -- Disable other auto-farm toggles before joining
-                        if not togglesDisabled then
-                            wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
-                            wasAutoClickOn = AutoClickToggle and AutoClickToggle.Value or false
-
-                            if wasAutoFightOn then AutoFightToggle:SetValue(false) end
-                            if wasAutoClickOn then AutoClickToggle:SetValue(false) end
-                            
-                            togglesDisabled = true
-                            wait(1) -- Wait for toggles to fully disable
-
-                            -- ✅ TELEPORT TO TRIAL ZONE
-                            pcall(function()
-                                local trialTeleportLocation = workspace.Zones:FindFirstChild("13")
-                                if trialTeleportLocation then
-                                    local spawnLocation = trialTeleportLocation:FindFirstChild("Interactables", true):FindFirstChild("Teleports", true):FindFirstChild("Locations", true):FindFirstChild("Spawn")
-                                    if spawnLocation then
-                                        local teleportArgs = { [1] = spawnLocation }
-                                        game:GetService("ReplicatedStorage").Packages.Knit.Services.ZoneService.RE.teleport:FireServer(unpack(teleportArgs))
-                                    end
-                                end
-                            end)
-                            
-                            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
-                            local ArmWrestleService = Knit.GetService("ArmWrestleService")
-
-                            ArmWrestleService:RequestEndFight("SkipEnd")
-
-                            task.wait(2)
-                        end
-
-                        -- Join the Medieval trial and start spamming crits
-                        local args = { "Medieval" }
-                        KnitServices.ChampionshipService.RF.RequestJoin:InvokeServer(unpack(args))
-                        startCritThreads()
-                        lastJoinAttemptTime = os.time()
-
-                    else -- Trial is active, over, or not available
-                        stopCritThreads()
-
-                        -- If we previously disabled the toggles, it's time to re-enable them
-                        if togglesDisabled then
-                            wait(2) -- Wait a bit after the trial ends
-
-                            -- Teleport back to the selected NPC zone
-                            teleportToSelectedNPCZone()
-                            wait(3) -- Wait for teleport to complete
-
-                            -- Re-enable toggles if they were on before
-                            if wasAutoFightOn and AutoFightToggle then AutoFightToggle:SetValue(true) end
-                            if wasAutoClickOn and AutoClickToggle then AutoClickToggle:SetValue(true) end
-
-                            -- Reset state flags for the next cycle
-                            wasAutoFightOn = false
-                            wasAutoClickOn = false
-                            togglesDisabled = false
-                        end
-                    end
-                end
-                wait(1)
-            end
-        end)
-    else
-        -- Cleanly stop crit threads when the toggle is turned off manually
-        stopCritThreads()
-    end
-end)
-
--- Get necessary services and controllers
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Knit = require(ReplicatedStorage.Packages.Knit)
-
--- We need to wait for Knit to be started and all controllers to be available
-local ArmWrestleController -- We need the ArmWrestleController for its MouseClick method
-local AutoFightController
-local AutoUIController
-repeat
-    task.wait()
-    ArmWrestleController = Knit.GetController("ArmWrestleController", true)
-    AutoFightController = Knit.GetController("AutoFightController", true)
-    AutoUIController = Knit.GetController("AutoUIController", true)
-until ArmWrestleController and AutoFightController and AutoUIController
-
--- A variable to store the game's original CPS value so we can restore it
-local originalClicksPerSec = nil
-local customAutoClickActive = false
-
--- Create toggle
-local CustomMatchToggle = DragonTrialSection:AddToggle("NativeAutoFight", {
-    Title = "Trial Auto Click",
-    Description = "This will click for you during the trial. This works in the main game as well, but not nearly as fast as the Auto Click/Crit toggle.",
-    Default = false
-})
-
-local function performCustomClicks()
-    while customAutoClickActive do
-        if ArmWrestleController.Fighting and ArmWrestleController.IsStarted then
-            ArmWrestleController.MouseClick(Enum.UserInputType.MouseButton1, false)
-        end
-        task.wait(0.05) -- Attempt to click 1000 times per second
-    end
-end
-
-CustomMatchToggle:OnChanged(function(enabled)
-    pcall(function()
-        if enabled then
-            -- Store the original CPS value if we haven't already
-            if originalClicksPerSec == nil then
-                originalClicksPerSec = AutoUIController.ClicksPerSec
-            end
-
-            local success, err = pcall(function()
-
-                AutoUIController.ClicksPerSec = 1000
-                AutoFightController:StartAutoFight() 
-            end)
-
-            if not success or not AutoFightController.Active then
-                customAutoClickActive = true
-                if originalClicksPerSec ~= nil then
-                    AutoUIController.ClicksPerSec = originalClicksPerSec
-                end
-                task.spawn(performCustomClicks)
-            else
-                customAutoClickActive = false
-            end
-
-        else
-            -- Always try to stop native auto-fight first
-            pcall(function()
-                AutoFightController:StopAutoFight(true) -- Use colon for method call
-            end)
-
-            customAutoClickActive = false
-
-            if originalClicksPerSec ~= nil then
-                AutoUIController.ClicksPerSec = originalClicksPerSec
-                originalClicksPerSec = nil
-            end
-        end
-    end)
-end)
-
-
--- Services
-local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Knit = require(ReplicatedStorage.Packages.Knit)
-
--- Player
-local player = Players.LocalPlayer
-
--- Get all possible items from LimitedMerchant module (Pirate Merchant and Lost Merchant)
-local function getAllItems()
-    local LimitedMerchant = require(ReplicatedStorage.Data.LimitedMerchant)
-    local allItems = {}
-    local slotItemMap = {} -- Track items by slot and title to avoid duplicates
-    
-    local merchantNames = {"Orc Merchant"}
-    
-    for _, merchantName in ipairs(merchantNames) do
-        local merchantData = LimitedMerchant[merchantName]
-        
-        if merchantData and merchantData.Items then
-            for slotIndex, itemList in pairs(merchantData.Items) do
-                for itemIndex, item in ipairs(itemList) do
-                    local title = item.Title or "Unknown"
-                    local key = merchantName .. ":" .. slotIndex .. ":" .. title
-                    
-                    -- Only add if this exact item in this slot hasn't been added yet
-                    if not slotItemMap[key] then
-                        local itemName = string.format("%s - %s (Slot %s) (%.0f %s)",
-                            title,
-                            merchantName,
-                            slotIndex,
-                            item.Price or 0,
-                            typeof(item.Currency) == "string" and item.Currency or (typeof(item.Currency) == "table" and item.Currency.Item or "Unknown Currency")
-                        )
-                        
-                        table.insert(allItems, {
-                            name = itemName,
-                            merchant = merchantName,
-                            slot = tonumber(slotIndex),
-                            index = itemIndex,
-                            raw = item
-                        })
-                        
-                        slotItemMap[key] = true
-                    end
-                end
-            end
-        end
-    end
-
-    return allItems
-end
-
--- Get live replica data (used to check if item is currently in merchant and has stock)
-local function getLiveStockData()
-    local ReplicaController = require(ReplicatedStorage.ReplicaController)
-    ReplicaController.RequestData()
-
-    local startTime = tick()
-    local replica
-    repeat
-        task.wait(0.1)
-        local CustomReplicaController = Knit.GetController("CustomReplicaController")
-        replica = CustomReplicaController and CustomReplicaController:GetReplica()
-    until replica or tick() - startTime > 5
-
-    local liveData = {}
-    
-    if replica and replica.Data and replica.Data.LimitedMerchant then
-        -- Get data for both Frozen Merchant and Frontman Merchant
-        local merchantNames = {"Orc Merchant"}
-
-        for _, merchantName in ipairs(merchantNames) do
-            local merchantData = replica.Data.LimitedMerchant[merchantName]
-            
-            if merchantData and merchantData.Items then
-                for slotIndex, itemData in pairs(merchantData.Items) do
-                    -- Get the actual item details from the LimitedMerchant module
-                    local LimitedMerchant = require(ReplicatedStorage.Data.LimitedMerchant)
-                    local currentItem = LimitedMerchant[merchantName] and 
-                                      LimitedMerchant[merchantName].Items and 
-                                      LimitedMerchant[merchantName].Items[slotIndex] and 
-                                      LimitedMerchant[merchantName].Items[slotIndex][itemData.Index]
-                    
-                    -- Store more detailed information including the title for easier matching
-                    liveData[merchantName .. ":" .. slotIndex] = {
-                        stock = itemData.Stock,
-                        index = itemData.Index,
-                        title = currentItem and currentItem.Title or "Unknown",
-                        fullItem = currentItem
-                    }
-                end
-            end
-        end
-    end
-
-    return liveData
-end
-
--- UI Section
-local MerchantSection = Tabs.Trial:AddSection("Merchant")
-
--- Get all items list and build name list + map
-local allItemDataList = getAllItems()
-local allItemNames = {}
-local allItemDataMap = {}
-
-for _, itemInfo in ipairs(allItemDataList) do
-    table.insert(allItemNames, itemInfo.name)
-    allItemDataMap[itemInfo.name] = itemInfo
-end
-
-table.sort(allItemNames)
-
--- Dropdown UI (before toggle)
-local MerchantDropdown = MerchantSection:AddDropdown("MerchantSelect", {
-    Title = "Select Item(s)",
-    Description = "Choose items to auto-buy from the Merchants.",
-    Values = allItemNames,
-    Multi = true,
-    Searchable = true,
-    Default = {}
-})
-
--- Variables to hold selected items
-local selectedMerchantItems = {}
-
--- Toggle for Auto Buying (below dropdown)
-local AutoBuyToggle = MerchantSection:AddToggle("AutoBuy", {
-    Title = "Auto Buy Items",
-    Default = false
-})
-
--- Paragraph to show selected items BELOW the toggle
-local SelectedItemsParagraph = MerchantSection:Paragraph("SelectedItemsDisplay", {
-    Title = "Selected Items",
-    Content = "None selected",
-    TitleAlignment = "Middle",
-    ContentAlignment = Enum.TextXAlignment.Left
-})
-
--- Status paragraph to show recent activity
-local StatusParagraph = MerchantSection:Paragraph("StatusDisplay", {
-    Title = "Status",
-    Content = "Waiting to start...",
-    TitleAlignment = "Middle",
-    ContentAlignment = Enum.TextXAlignment.Left
-})
-
--- Dropdown selection changed handler
-MerchantDropdown:OnChanged(function(value)
-    selectedMerchantItems = value
-
-    local selectedList = {}
-    for itemName, isSelected in pairs(value) do
-        if isSelected then
-            table.insert(selectedList, itemName)
-        end
-    end
-
-    if #selectedList > 0 then
-        SelectedItemsParagraph:SetValue(table.concat(selectedList, "\n"))
-    else
-        SelectedItemsParagraph:SetValue("None selected")
-    end
-end)
-
--- Auto Buy Loop
-AutoBuyToggle:OnChanged(function(enabled)
-    if enabled then
-        StatusParagraph:SetValue("Starting auto-buy loop...")
-        
-        task.spawn(function()
-            while AutoBuyToggle.Value do
-                local liveData = getLiveStockData()
-                local purchasesMade = false
-                
-                -- Check for each selected item
-                for itemName, isSelected in pairs(selectedMerchantItems) do
-                    if isSelected then
-                        local info = allItemDataMap[itemName]
-                        
-                        if info then
-                            local merchantName = info.merchant
-                            local slot = info.slot
-                            local merchantSlotKey = merchantName .. ":" .. tostring(slot)
-                            local liveInfo = liveData[merchantSlotKey]
-                            
-                            -- Check if this slot has an item with stock
-                            if liveInfo and liveInfo.stock and liveInfo.stock > 0 then
-                                -- Check if the current item in this slot is the one we want to buy
-                                -- Compare titles for safer matching
-                                local itemTitle = info.raw.Title
-                                if itemTitle == liveInfo.title then
-                                    StatusParagraph:SetValue("Found selected item: " .. itemTitle .. "\nAttempting purchase...")
-                                    
-                                    local success, result = pcall(function()
-                                        return ReplicatedStorage.Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(merchantName, slot)
-                                    end)
-                                    
-                                    if success then
-                                        StatusParagraph:SetValue("Successfully purchased: " .. itemTitle)
-                                        purchasesMade = true
-                                    else
-                                        StatusParagraph:SetValue("Failed to purchase: " .. itemTitle .. "\nError: " .. tostring(result))
-                                    end
-                                    
-                                    -- Short delay after purchasing
-                                    task.wait(0.5)
-                                end
-                            end
-                        end
-                    end
-                end
-                
-                if not purchasesMade then
-                    StatusParagraph:SetValue("Checking for selected items...\nLast check: " .. os.date("%X"))
-                end
-                
-                -- Wait before next check cycle
-                task.wait(1.5)
-            end
-            
-            StatusParagraph:SetValue("Auto-buy stopped.")
-        end)
-    else
-        StatusParagraph:SetValue("Auto-buy disabled.")
-    end
-end)
-
-local TrialVaultSection = Tabs.Trial:AddSection("Kingdom Chest")
-
-local KingdomChestStatus = TrialVaultSection:Paragraph("KingdomChestStatus", {
-    Title = "Lost Chest Key Amount",
-    Content = "Loading..."
-})
-
-local AutoOpenKingdomChestToggle = TrialVaultSection:AddToggle("AutoOpenVault", {
-    Title = "Auto Open Kingdom Chest",
-    Description = "Automatically opens the Kingdom Chest when you can afford it.",
-    Default = false
-})
-
-local function parseAmount1(amtText1)
-    local numStr = amtText1:match("x(.+)")
-    if not numStr then return 0 end
-    if numStr:find("k") then
-        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
-        return baseNum and (baseNum * 1000) or 0
-    else
-        return tonumber(numStr) or 0
-    end
-end
-
-AutoOpenKingdomChestToggle:OnChanged(function(enabled)
-    if enabled then
-        task.spawn(function()
-            local ReplicatedStorage = game:GetService("ReplicatedStorage")
-            while AutoOpenKingdomChestToggle.Value do
-                local player = game.Players.LocalPlayer
-                local KeyObject = game:GetService("Players").LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Lost Chest Key/1"]
-                
-                if KeyObject and KeyObject:FindFirstChild("ButtonDisplay") and KeyObject.ButtonDisplay:FindFirstChild("Amt") then
-                    local amtText1 = KeyObject.ButtonDisplay.Amt.Text
-                    local amount = parseAmount1(amtText1)
-                    KingdomChestStatus:SetValue(amtText1)
-                    
-                    if amount >= 1 then
-                        pcall(function()
-                            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit.KnitClient)
-                            Knit.GetService("ChestService"):Open("KingdomChest")
-                        end)
-                        task.wait(0.25) -- Fast check when gold is available
-                    else
-                        KingdomChestStatus:SetValue("No Lost Chest Keys")
-                        task.wait(1) -- Slower check when no gold
-                    end
-                else
-                    KingdomChestStatus:SetValue("No Lost Chest Keys")
-                    task.wait(1) 
-                end
-            end
-        end)
-    end
-end)
-
--- Passive Status Updater (even when toggle is off)
-task.spawn(function()
-    while true do
-        local player = game:GetService("Players").LocalPlayer
-        local KeyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Lost Chest Key/1")
-        
-        if KeyObject and KeyObject:FindFirstChild("ButtonDisplay") and KeyObject.ButtonDisplay:FindFirstChild("Amt") then
-            KingdomChestStatus:SetValue(KeyObject.ButtonDisplay.Amt.Text)
-        else
-            KingdomChestStatus:SetValue("No Lost Chest Keys")
-        end
-        
-        task.wait(1)
-    end
-end)
-
-
 -- Services
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -1475,39 +1204,79 @@ local LayerInfoModule = require(ReplicatedStorage.Data.LayerInfo)
 -- Mine reset handling variables
 local isMinePaused = false
 local mineResetCheckConnection
+local lastCheckedTime = 0
+local mineResetThreshold = 5 -- Default threshold for path 1
 local mineResetThresholdPath1 = 5 -- Stop mining when timer is under 5s (static path)
 local mineResetThresholdPath2 = 15 -- Stop mining when timer is under 15s (dynamic path)
-local mineResetThresholdPath3 = 5 -- Stop mining when timer is under 30s (path along predefined points)
+local mineResetThresholdPath3 = 5 -- Stop mining when timer is under 5s (path 3)
+local mineRestartThreshold = 19 * 60 + 57 -- Restart mining when timer is under 19m 57s
 
 local function ParseTimerText(timerText)
     if not timerText or timerText == "" then return 0 end
+
+    -- "MM:SS" format
     local minutes, seconds = timerText:match("(%d+):(%d+)")
-    if minutes and seconds then return tonumber(minutes) * 60 + tonumber(seconds) end
+    if minutes and seconds then
+        local totalSeconds = tonumber(minutes) * 60 + tonumber(seconds)
+        return totalSeconds
+    end
+
+    -- "Xm Ys" format
     local m, s = timerText:match("(%d+)m%s*(%d+)s")
-    if m and s then return tonumber(m) * 60 + tonumber(s) end
+    if m and s then
+        local totalSeconds = tonumber(m) * 60 + tonumber(s)
+        return totalSeconds
+    end
+
+    -- "Xs" format (seconds only)
     local onlySeconds = timerText:match("(%d+)s")
-    if onlySeconds then return tonumber(onlySeconds) end
+    if onlySeconds then
+        local totalSeconds = tonumber(onlySeconds)
+        return totalSeconds
+    end
+
+    -- Fallback: try to extract any numbers and assume it's seconds
     local numbers = {}
-    for num in timerText:gmatch("(%d+)") do table.insert(numbers, tonumber(num)) end
-    if #numbers >= 2 then return numbers[1] * 60 + numbers[2]
-    elseif #numbers == 1 then return numbers[1] end
+    for num in timerText:gmatch("(%d+)") do
+        table.insert(numbers, tonumber(num))
+    end
+
+    if #numbers >= 2 then
+        return totalSeconds
+    elseif #numbers == 1 then
+        return numbers[1]
+    end
     return 0
 end
 
+-- Reference to the LayerInfo module in ReplicatedStorage
+local LayerInfoModule = require(game:GetService("ReplicatedStorage").Data.LayerInfo)
+
+-- Extract all block names from the module, preserve order
 local function ExtractBlockNames()
-    local blockNames, blockSeen = {}, {}
+    local blockNames = {}
+    local blockSeen = {}
+
     for _, mineLayers in pairs(LayerInfoModule) do
         for _, layerData in ipairs(mineLayers) do
             for blockName in pairs(layerData.Spawnable) do
-                if not blockSeen[blockName] then table.insert(blockNames, blockName); blockSeen[blockName] = true end
+                if not blockSeen[blockName] then
+                    table.insert(blockNames, blockName)
+                    blockSeen[blockName] = true
+                end
             end
         end
     end
+
     return blockNames
 end
 
+-- Extract filtered blocks (ignore dirt/stone/sandstones), preserve order
 local function ExtractBlockNamesFiltered()
-    local blockNames, blockSeen = {}, {}
+    local blockNames = {}
+    local blockSeen = {}
+
+    -- Set of block names to ignore (normalized: lowercase, no spaces)
     local ignoredBlocks = {
         ["dirt"] = true, ["stone"] = true, ["darkstone"] = true, ["yellowstone"] = true, ["orangestone"] = true,
         ["bluestone"] = true, ["greenstone"] = true, ["redstone"] = true, ["purplestone"] = true, ["redsandstone"] = true,
@@ -1518,282 +1287,801 @@ local function ExtractBlockNamesFiltered()
         ["redhardplastic"] = true, ["bluehardplastic"] = true, ["greenhardplastic"] = true, ["yellowhardplastic"] = true,
         ["orangehardplastic"] = true, ["purplehardplastic"] = true, ["pinkhardplastic"] = true
     }
+
     for _, mineLayers in pairs(LayerInfoModule) do
         for _, layerData in ipairs(mineLayers) do
             for blockName in pairs(layerData.Spawnable) do
+                -- Normalize the block name: lowercase + remove spaces
                 local lowerName = string.lower(blockName):gsub("%s+", "")
                 if not ignoredBlocks[lowerName] and not blockSeen[blockName] then
-                    table.insert(blockNames, blockName); blockSeen[blockName] = true
+                    table.insert(blockNames, blockName)
+                    blockSeen[blockName] = true
                 end
             end
         end
     end
+
     return blockNames
 end
 
+-- Precompute
 local AllBlockNames = ExtractBlockNames()
 local FilteredBlockNames = ExtractBlockNamesFiltered()
 
 -- Mining variables
-local selectedBlocks, pathMiningBlocks = {}, {}
-local miningEnabled, targetBlockMiningEnabled, mineAlongPath = false, false, false
+local selectedBlocks = {}
+local miningEnabled = false
+local miningConnection
 local blocksTransparent = false
 local transparencyConnection
 local targetBlock = nil
-
--- Master Loop Control
-local masterMiningThread = nil
-local currentTargetBlock = nil
+local targetBlockMiningEnabled = false
+local targetBlockMiningConnection
+local pathMiningBlocks = {}
+local mineAlongPath = false
 
 local timeLeftLabel = nil
 local lastPathCheck = 0
 local currentPathIndex = 1
-local PATH_CHECK_INTERVAL = 1
+local PATH_CHECK_INTERVAL = 1 -- Check path every second
 
+-- Define the three paths
 local paths = {
-    function() return workspace:WaitForChild("GameObjects", 0.1):WaitForChild("Mining", 0.1):WaitForChild("Mining", 0.1):WaitForChild("MineSpawn", 0.1):WaitForChild("Attachment", 0.1):WaitForChild("BillboardGui", 0.1):WaitForChild("TimeLeft", 0.1) end,
-    function() local c = workspace:WaitForChild("GameObjects", 0.1):WaitForChild("Mining", 0.1):GetChildren(); if #c >= 2 then return c[2]:WaitForChild("MineSpawn", 0.1):WaitForChild("Attachment", 0.1):WaitForChild("BillboardGui", 0.1):WaitForChild("TimeLeft", 0.1) else error() end end,
-    function() local c = workspace:WaitForChild("GameObjects", 0.1):WaitForChild("Mining", 0.1):GetChildren(); if #c >= 3 then return c[3]:WaitForChild("MineSpawn", 0.1):WaitForChild("Attachment", 0.1):WaitForChild("BillboardGui", 0.1):WaitForChild("TimeLeft", 0.1) else error() end end
+    -- Path 1: Original static path (5 second threshold)
+    function()
+        return workspace:WaitForChild("GameObjects", 0.1)
+            :WaitForChild("Mining", 0.1)
+            :WaitForChild("Mining", 0.1)
+            :WaitForChild("MineSpawn", 0.1)
+            :WaitForChild("Attachment", 0.1)
+            :WaitForChild("BillboardGui", 0.1)
+            :WaitForChild("TimeLeft", 0.1)
+    end,
+
+    -- Path 2: Dynamic GetChildren()[2] path (15 second threshold)
+    function()
+        local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
+            :WaitForChild("Mining", 0.1)
+        local children = miningFolder:GetChildren()
+        if #children >= 2 then
+            return children[2]:WaitForChild("MineSpawn", 0.1)
+                :WaitForChild("Attachment", 0.1)
+                :WaitForChild("BillboardGui", 0.1)
+                :WaitForChild("TimeLeft", 0.1)
+        else
+            error("Not enough children in Mining folder")
+        end
+    end,
+
+    -- Path 3: Dynamic GetChildren()[3] path (5 second threshold)
+    function()
+        local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
+            :WaitForChild("Mining", 0.1)
+        local children = miningFolder:GetChildren()
+        if #children >= 3 then
+            return children[3]:WaitForChild("MineSpawn", 0.1)
+                :WaitForChild("Attachment", 0.1)
+                :WaitForChild("BillboardGui", 0.1)
+                :WaitForChild("TimeLeft", 0.1)
+        else
+            error("Not enough children in Mining folder")
+        end
+    end
 }
 
+local pathNames = {
+    "workspace.GameObjects.Mining.Mining.MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)",
+    "workspace.GameObjects.Mining:GetChildren()[2].MineSpawn.Attachment.BillboardGui.TimeLeft (15s threshold)",
+    "workspace.GameObjects.Mining:GetChildren()[3].MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)"
+}
+
+-- Function to get the appropriate blocks folder based on current path
 local function GetCurrentBlocksFolder()
-    local s, f = pcall(function()
-        local go = workspace:WaitForChild("GameObjects", 0.1):WaitForChild("Mining", 0.1)
-        if currentPathIndex == 1 then return go:WaitForChild("Mining", 0.1):WaitForChild("Blocks", 0.1)
-        else local c = go:GetChildren(); if currentPathIndex == 2 and #c >= 2 then return c[2]:WaitForChild("Blocks", 0.1) elseif currentPathIndex == 3 and #c >= 3 then return c[3]:WaitForChild("Blocks", 0.1) end end
-    end)
-    return s and f or nil
+    if currentPathIndex == 1 then
+        -- Path 1: workspace.GameObjects.Mining.Mining.Blocks
+        local success, folder = pcall(function()
+            return workspace:WaitForChild("GameObjects", 0.1)
+                :WaitForChild("Mining", 0.1)
+                :WaitForChild("Mining", 0.1)
+                :WaitForChild("Blocks", 0.1)
+        end)
+        if success and folder then
+            return folder
+        end
+    elseif currentPathIndex == 2 then
+        -- Path 2: workspace.GameObjects.Mining:GetChildren()[2].Blocks
+        local success, folder = pcall(function()
+            local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
+                :WaitForChild("Mining", 0.1)
+            local children = miningFolder:GetChildren()
+            if #children >= 2 then
+                return children[2]:WaitForChild("Blocks", 0.1)
+            end
+            return nil
+        end)
+        if success and folder then
+            return folder
+        end
+    elseif currentPathIndex == 3 then
+        -- Path 3: workspace.GameObjects.Mining:GetChildren()[3].Blocks
+        local success, folder = pcall(function()
+            local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
+                :WaitForChild("Mining", 0.1)
+            local children = miningFolder:GetChildren()
+            if #children >= 3 then
+                return children[3]:WaitForChild("Blocks", 0.1)
+            end
+            return nil
+        end)
+        if success and folder then
+            return folder
+        end
+    end
+    return nil
 end
 
 local function CheckAndSwitchPath()
-    local now = tick()
-    if now - lastPathCheck < PATH_CHECK_INTERVAL then return end
-    lastPathCheck = now
-    local tried, max = 0, #paths
-    while tried < max do
-        local s, l = pcall(paths[currentPathIndex])
-        if s and l and l.Parent then timeLeftLabel = l; blocksFolder = GetCurrentBlocksFolder(); return
-        else currentPathIndex = currentPathIndex % max + 1; tried = tried + 1 end
+    local currentTime = tick()
+
+    -- Only check paths every second
+    if currentTime - lastPathCheck < PATH_CHECK_INTERVAL then
+        return
     end
-    timeLeftLabel = nil
+
+    lastPathCheck = currentTime
+
+    -- Try current path first
+    local success, label = pcall(paths[currentPathIndex])
+
+    if success and label and label.Parent then
+        -- Current path works, use it
+        timeLeftLabel = label
+
+        -- Update blocks folder to match current path
+        blocksFolder = GetCurrentBlocksFolder()
+
+        return
+    else
+        -- Current path failed, try other paths
+        local tried = 0
+        local maxPaths = #paths
+
+        while tried < maxPaths do
+            -- Switch to next path
+            currentPathIndex = currentPathIndex % maxPaths + 1
+            tried = tried + 1
+
+            -- Try this path
+            local success2, label2 = pcall(paths[currentPathIndex])
+
+            if success2 and label2 and label2.Parent then
+                timeLeftLabel = label2
+                -- Update blocks folder to match new path
+                blocksFolder = GetCurrentBlocksFolder()
+                return
+            end
+        end
+
+        -- If all paths fail, clear timeLeftLabel if it's no longer valid
+        if timeLeftLabel and not timeLeftLabel.Parent then
+            timeLeftLabel = nil
+        end
+    end
 end
 
 local function CheckMineReset()
+    -- Check and potentially switch paths every second
     CheckAndSwitchPath()
-    if not timeLeftLabel or not timeLeftLabel.Parent then return false end
+
+    -- If no valid label found, return false
+    if not timeLeftLabel or not timeLeftLabel.Parent then
+        return false
+    end
+
+    -- Parse the text into seconds
     local secondsLeft = ParseTimerText(timeLeftLabel.Text)
-    if not secondsLeft or secondsLeft <= 0 then return false end
-    local threshold = (currentPathIndex == 1 and mineResetThresholdPath1) or (currentPathIndex == 2 and mineResetThresholdPath2) or (currentPathIndex == 3 and mineResetThresholdPath3) or 0
-    if secondsLeft <= threshold then return true end
-    if secondsLeft > threshold and isMinePaused then return false, true end
+
+    if not secondsLeft or secondsLeft <= 0 then
+        return false
+    end
+
+    -- Get the current threshold based on active path (ensure it's always current)
+    local currentThreshold = (currentPathIndex == 1 and mineResetThresholdPath1) or (currentPathIndex == 2 and mineResetThresholdPath2) or (currentPathIndex == 3 and mineResetThresholdPath3) or 15
+
+    -- Pause mining if below threshold (different thresholds for different paths)
+    if secondsLeft <= currentThreshold then
+        return true
+    end
+
+    -- Resume mining if mine was paused and timer is above threshold
+    if secondsLeft > currentThreshold and isMinePaused then
+        return false, true
+    end
+
     return false
 end
 
 local function ToggleBlockTransparency(transparent)
     blocksTransparent = transparent
-    if transparencyConnection then pcall(function() transparencyConnection:Disconnect() end); transparencyConnection = nil end
-    local function getFolders()
-        local folders, go = {}, workspace.GameObjects.Mining
-        local s1, f1 = pcall(function() return go:WaitForChild("Mining", 0.1):WaitForChild("Blocks", 0.1) end)
-        if s1 and f1 then table.insert(folders, f1) end
-        local s2, f2 = pcall(function() local c = go:GetChildren(); if #c >= 2 then return c[2]:WaitForChild("Blocks", 0.1) end end)
-        if s2 and f2 then table.insert(folders, f2) end
-        local s3, f3 = pcall(function() local c = go:GetChildren(); if #c >= 3 then return c[3]:WaitForChild("Blocks", 0.1) end end)
-        if s3 and f3 then table.insert(folders, f3) end
+
+    -- Helper to get all relevant blocks folders
+    local function getBlocksFolders()
+        local folders = {}
+        local miningGO = workspace.GameObjects.Mining
+
+        -- Path 1: workspace.GameObjects.Mining.Mining.Blocks
+        local success1, folder1 = pcall(function()
+            return miningGO:WaitForChild("Mining", 0.1):WaitForChild("Blocks", 0.1)
+        end)
+        if success1 and folder1 then
+            table.insert(folders, folder1)
+        end
+
+        -- Path 2: workspace.GameObjects.Mining:GetChildren()[2].Blocks
+        local success2, folder2 = pcall(function()
+            local children = miningGO:GetChildren()
+            if #children >= 2 then
+                return children[2]:WaitForChild("Blocks", 0.1)
+            end
+            return nil
+        end)
+        if success2 and folder2 then
+            table.insert(folders, folder2)
+        end
+
+        -- Path 3: workspace.GameObjects.Mining:GetChildren()[3].Blocks
+        local success3, folder3 = pcall(function()
+            local children = miningGO:GetChildren()
+            if #children >= 3 then
+                return children[3]:WaitForChild("Blocks", 0.1)
+            end
+            return nil
+        end)
+        if success3 and folder3 then
+            table.insert(folders, folder3)
+        end
+
         return folders
     end
+
+    -- Always disconnect previous connection if it exists
+    if transparencyConnection then
+        pcall(function()
+            transparencyConnection:Disconnect()
+        end)
+        transparencyConnection = nil
+    end
+
     if transparent then
         transparencyConnection = task.spawn(function()
             while blocksTransparent do
-                for _, folder in ipairs(getFolders()) do if folder and folder:IsDescendantOf(workspace) then for _, block in ipairs(folder:GetChildren()) do if block and block:FindFirstChild("Primary") then block.Primary.Transparency = 0.7 end end end end
+                for _, blocksFolder in ipairs(getBlocksFolders()) do
+                    if blocksFolder and blocksFolder:IsDescendantOf(workspace) then
+                        for _, block in ipairs(blocksFolder:GetChildren()) do
+                            if block and block:FindFirstChild("Primary") then
+                                block.Primary.Transparency = 0.7
+                            end
+                        end
+                    end
+                end
                 task.wait(3)
             end
         end)
     else
-        for _, folder in ipairs(getFolders()) do if folder and folder:IsDescendantOf(workspace) then for _, block in ipairs(folder:GetChildren()) do if block and block:FindFirstChild("Primary") then block.Primary.Transparency = 0 end end end end
-    end
-end
-
-local function BlockExists(block) return block and block.Parent and blocksFolder and block.Parent == blocksFolder end
-local function GetHighestDepthBlock()
-    if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then blocksFolder = GetCurrentBlocksFolder(); if not blocksFolder then return nil end end
-    local highestBlock, highestDepth = nil, -1
-    for _, block in ipairs(blocksFolder:GetChildren()) do local depth = block:GetAttribute("Depth") or 0; if depth > highestDepth then highestDepth = depth; highestBlock = block end end
-    return highestBlock
-end
-
--- ✅ Re-added the helper function to handle the "same depth" scenario.
-local function getRandomBlockIfDepthsAreSame()
-    if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then return nil end
-    local blocks = blocksFolder:GetChildren()
-    if #blocks <= 1 then return nil end -- Not enough blocks to compare
-
-    local firstDepth = blocks[1]:GetAttribute("Depth")
-    if firstDepth == nil then return nil end -- Cannot compare if the first block is invalid
-
-    for i = 2, #blocks do
-        if (blocks[i]:GetAttribute("Depth") or -1) ~= firstDepth then
-            return nil -- Depths are different, so do nothing.
-        end
-    end
-
-    -- If we reach here, all depths are the same. Return a random block.
-    return blocks[math.random(1, #blocks)]
-end
-
--- This function is the single source for deciding what to mine.
--- It now includes the random block logic as its highest priority.
-local function updateMiningTarget()
-    if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then blocksFolder = GetCurrentBlocksFolder(); if not blocksFolder then currentTargetBlock = nil; return end end
-    
-    -- ✅ Priority 0: If all blocks are at the same depth, pick one randomly to break ties.
-    local randomBlock = getRandomBlockIfDepthsAreSame()
-    if randomBlock then
-        currentTargetBlock = randomBlock
-        return -- We found our target, exit early
-    end
-
-    -- Priority 1: Mine Along the Way
-    if mineAlongPath and #pathMiningBlocks > 0 then
-        for _, block in ipairs(blocksFolder:GetChildren()) do
-            for _, targetName in ipairs(pathMiningBlocks) do
-                if string.find(string.lower(block.Name), string.lower(targetName)) then
-                    currentTargetBlock = block; return
-                end
-            end
-        end
-    end
-
-    -- Priority 2: Auto Mine to Target
-    if targetBlockMiningEnabled and targetBlock then
-        -- Try to find the target block
-        for _, block in ipairs(blocksFolder:GetChildren()) do
-            if string.find(string.lower(block.Name), string.lower(targetBlock)) then
-                currentTargetBlock = block; return
-            end
-        end
-        -- If not found, dig to the deepest point
-        currentTargetBlock = GetHighestDepthBlock(); return
-    end
-
-    -- Priority 3: General Auto Mining
-    if miningEnabled then
-        -- Find block from selected dropdown
-        if #selectedBlocks > 0 then
-            for _, block in ipairs(blocksFolder:GetChildren()) do
-                for _, oreName in ipairs(selectedBlocks) do
-                    if string.find(string.lower(block.Name), string.lower(oreName)) then
-                        currentTargetBlock = block; return
+        for _, blocksFolder in ipairs(getBlocksFolders()) do
+            if blocksFolder and blocksFolder:IsDescendantOf(workspace) then
+                for _, block in ipairs(blocksFolder:GetChildren()) do
+                    if block and block:FindFirstChild("Primary") then
+                        block.Primary.Transparency = 0
                     end
                 end
             end
         end
-        -- If none selected or found, dig to deepest
-        currentTargetBlock = GetHighestDepthBlock(); return
-    end
-
-    -- If no toggles are active, clear the target
-    currentTargetBlock = nil
-end
-
--- The single, optimized master loop
-local function MasterMiningLoop()
-    local lastTargetUpdateTime = 0
-    while miningEnabled or targetBlockMiningEnabled or mineAlongPath do
-        pcall(function()
-            if not isMinePaused then
-                -- Target Acquisition (Slow Task - every 5 seconds)
-                if tick() - lastTargetUpdateTime > 5 then
-                    updateMiningTarget()
-                    lastTargetUpdateTime = tick()
-                end
-
-                -- Mining Action (Fast Task - every 0.1 seconds)
-                if currentTargetBlock and BlockExists(currentTargetBlock) then
-                    MiningService:MineBlock(currentTargetBlock):andThen(function() end)
-                else
-                    -- Target is gone, force a new target search on the next loop iteration
-                    lastTargetUpdateTime = 0 
-                end
-            end
-        end)
-        task.wait(0.1) -- ✅ Kept your faster 0.1 second interval
-    end
-    masterMiningThread = nil -- Loop finished, clear the thread variable
-end
-
--- Function to start/stop the master loop
-local function ManageMasterLoop()
-    if (miningEnabled or targetBlockMiningEnabled or mineAlongPath) and not masterMiningThread then
-        masterMiningThread = task.spawn(MasterMiningLoop)
     end
 end
 
+-- Start monitoring mine reset timer
 local function StartMineResetMonitoring()
-    if mineResetCheckConnection then mineResetCheckConnection:Disconnect() end
+    if mineResetCheckConnection then
+        mineResetCheckConnection:Disconnect()
+    end
+
     mineResetCheckConnection = RunService.Heartbeat:Connect(function()
         local shouldPause, hasReset = CheckMineReset()
-        if shouldPause and not isMinePaused then isMinePaused = true
-        elseif not shouldPause and isMinePaused then isMinePaused = false end
+
+        if shouldPause and not isMinePaused then
+            -- Pause mining due to imminent reset
+            isMinePaused = true
+        elseif not shouldPause and isMinePaused then
+            -- Resume mining after reset
+            isMinePaused = false
+        end
+
         if hasReset then
+            -- Update blocks folder after reset
             blocksFolder = GetCurrentBlocksFolder()
-            currentTargetBlock = nil -- Force retarget after reset
-            if blocksTransparent then ToggleBlockTransparency(false); ToggleBlockTransparency(true) end
+
+            if targetBlockMiningEnabled then
+                StartTargetBlockMining()
+            elseif miningEnabled then
+                StartMining()
+            end
+
+            -- Reset path mining index when mine resets
+            currentPathBlockIndex = 1
+
+            -- Toggle transparency off and back on if needed
+            if blocksTransparent then
+                ToggleBlockTransparency(false)
+                ToggleBlockTransparency(true)
+            end
         end
     end)
 end
 
+-- Function to verify if a block still exists
+local function BlockExists(block)
+    return block and block.Parent and blocksFolder and block.Parent == blocksFolder
+end
+
+-- Get the block with the highest depth
+local function GetHighestDepthBlock()
+    -- Ensure blocks folder exists
+    if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
+        blocksFolder = GetCurrentBlocksFolder()
+        if not blocksFolder then return nil end
+    end
+
+    local highestBlock = nil
+    local highestDepth = -1
+    for _, block in ipairs(blocksFolder:GetChildren()) do
+        local depth = block:GetAttribute("Depth") or 0
+        if depth > highestDepth then
+            highestDepth = depth
+            highestBlock = block
+        end
+    end
+    return highestBlock
+end
+
+local function IsValuableBlock(blockName)
+    local lowerName = string.lower(blockName)
+    local ignoredBlocks = {
+        ["dirt"] = true, ["stone"] = true, ["darkstone"] = true, ["yellowstone"] = true, ["orangestone"] = true,
+        ["bluestone"] = true, ["greenstone"] = true, ["redstone"] = true, ["purplestone"] = true, ["redsandstone"] = true,
+        ["bluesandstone"] = true, ["greensandstone"] = true, ["yellowsandstone"] = true, ["orangesandstone"] = true,
+        ["purplesandstone"] = true, ["pinksandstone"] = true, ["sand"] = true, ["sandstone"] = true,
+        ["plastic"] = true, ["hardplastic"] = true, ["redplastic"] = true, ["blueplastic"] = true, ["greenplastic"] = true,
+        ["yellowplastic"] = true, ["orangeplastic"] = true, ["purpleplastic"] = true, ["pinkplastic"] = true,
+        ["redhardplastic"] = true, ["bluehardplastic"] = true, ["greenhardplastic"] = true, ["yellowhardplastic"] = true,
+        ["orangehardplastic"] = true, ["purplehardplastic"] = true, ["pinkhardplastic"] = true
+    }
+    return not ignoredBlocks[lowerName]
+end
+
+-- Find best block to mine based on multi-select
+local function FindBestBlock()
+    -- Ensure blocks folder exists
+    if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
+        blocksFolder = GetCurrentBlocksFolder()
+        if not blocksFolder then return nil end
+    end
+
+    -- Check for selected blocks in view
+    for _, block in ipairs(blocksFolder:GetChildren()) do
+        for _, oreName in ipairs(selectedBlocks) do
+            if string.find(string.lower(block.Name), string.lower(oreName)) then
+                return block
+            end
+        end
+    end
+
+    -- If none found, mine the deepest block
+    return GetHighestDepthBlock()
+end
+
+local function MineRandomBlockIfSameDepth()
+    if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then return false end
+    local blocks = blocksFolder:GetChildren()
+    if #blocks == 0 then return false end
+
+    local firstDepth = blocks[1]:GetAttribute("Depth") or 0
+    for _, block in ipairs(blocks) do
+        if (block:GetAttribute("Depth") or 0) ~= firstDepth then
+            return false
+        end
+    end
+
+    -- All blocks have the same depth, mine a random one
+    local randomBlock = blocks[math.random(1, #blocks)]
+    MiningService:MineBlock(randomBlock):andThen(function() end)
+    return true
+end
+
+-- ✅ NEW: Path mining pause variables
+local pathMiningConnection
+local currentPathBlockIndex = 1 
+local lastMiningTime = os.clock()
+local blockTypeCounts = {}  
+local miningDelay = 0.25
+local lastPauseCheck = 0
+local pauseInterval = 10 -- ✅ NEW: Check every 10 seconds
+local otherMiningPaused = false -- ✅ NEW: Track if other mining is paused due to path mining
+
+-- ✅ NEW: Function to check if all selected path mining blocks are destroyed
+local function CheckAllPathBlocksDestroyed()
+    if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) or #pathMiningBlocks == 0 then
+        return true -- No blocks to check or no folder
+    end
+
+    -- Check if any of the selected path mining blocks still exist
+    for _, targetName in ipairs(pathMiningBlocks) do
+        for _, block in ipairs(blocksFolder:GetChildren()) do
+            if string.find(string.lower(block.Name), string.lower(targetName)) then
+                return false -- Found at least one block still exists
+            end
+        end
+    end
+
+    return true -- All selected blocks are destroyed
+end
+
+local function StartMining()
+    if miningConnection then
+        miningConnection:Disconnect()
+    end
+
+    miningConnection = RunService.Heartbeat:Connect(function()
+        -- ✅ UPDATED: Check both mine reset pause AND path mining pause
+        if not miningEnabled or isMinePaused or otherMiningPaused then return end
+
+        -- Ensure blocks folder exists after a mine reset
+        if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
+            blocksFolder = GetCurrentBlocksFolder()
+            if not blocksFolder then return end
+        end
+
+        if MineRandomBlockIfSameDepth() then return end
+
+        local blockToMine = FindBestBlock()
+        if blockToMine and BlockExists(blockToMine) then
+            MiningService:MineBlock(blockToMine):andThen(function() end)
+        end
+    end)
+end
+
+local function StartPathMining()
+    if pathMiningConnection then
+        pathMiningConnection:Disconnect()
+    end
+
+    pathMiningConnection = RunService.Heartbeat:Connect(function()
+        if not mineAlongPath or isMinePaused or #pathMiningBlocks == 0 then return end
+
+        local currentTime = os.clock()
+        
+        -- ✅ NEW: Every 10 seconds, check if path blocks exist and manage pausing
+        if currentTime - lastPauseCheck >= pauseInterval then
+            lastPauseCheck = currentTime
+            
+            -- Check if selected path blocks exist
+            local pathBlocksExist = not CheckAllPathBlocksDestroyed()
+            
+            if pathBlocksExist then
+                -- Path blocks exist, pause other mining functions
+                otherMiningPaused = true
+            else
+                -- No path blocks exist, resume other mining functions and wait 10 seconds
+                otherMiningPaused = false
+                task.wait(10) -- ✅ NEW: Wait 10 seconds before next check
+                return
+            end
+        end
+        
+        -- Only proceed with path mining if enough time has passed
+        if currentTime - lastMiningTime < miningDelay then return end
+
+        if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
+            blocksFolder = GetCurrentBlocksFolder()
+            if not blocksFolder then
+                return
+            end
+        end
+
+        local tried = 0
+        local blockFound = false
+        local blockToMine = nil
+
+        while tried < #pathMiningBlocks do
+            local currentTarget = pathMiningBlocks[currentPathBlockIndex]
+            local foundCount = 0
+
+            -- Count blocks of current target type
+            for _, block in ipairs(blocksFolder:GetChildren()) do
+                local blockName = string.lower(block.Name)
+                if string.find(blockName, string.lower(currentTarget)) and BlockExists(block) then
+                    foundCount = foundCount + 1
+                    if not blockToMine then
+                        blockToMine = block
+                    end
+                end
+            end
+
+            if foundCount > 0 then
+                blockFound = true
+                break
+            else
+                -- Rotate to next type
+                local previousTarget = currentTarget
+                currentPathBlockIndex = currentPathBlockIndex + 1
+                if currentPathBlockIndex > #pathMiningBlocks then
+                    currentPathBlockIndex = 1
+                end
+                local newTarget = pathMiningBlocks[currentPathBlockIndex]
+                tried = tried + 1
+            end
+        end
+
+        if blockFound and blockToMine then
+            MiningService:MineBlock(blockToMine):andThen(function() end)
+            lastMiningTime = currentTime
+        else
+            -- No path blocks found, resume other mining
+            otherMiningPaused = false
+        end
+    end)
+end
+
+-- Find the minimum depth at which a block appears
+local function GetBlockMinDepth(blockName)
+    for _, layerData in ipairs(LayerInfoModule) do
+        if layerData.Spawnable and layerData.Spawnable[blockName] then
+            return layerData.Depth or 0
+        end
+    end
+    return 0
+end
+
+-- Get a block to mine when targeting a specific ore
+local function GetBlockInTargetRange()
+    if not targetBlock then 
+        return GetHighestDepthBlock() 
+    end
+
+    if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
+        blocksFolder = GetCurrentBlocksFolder()
+        if not blocksFolder then return nil end
+    end
+
+    for _, block in ipairs(blocksFolder:GetChildren()) do
+        if string.find(string.lower(block.Name), string.lower(targetBlock)) then
+            return block
+        end
+    end
+
+    -- Mine along the way is no longer tied here
+    local targetMinDepth = GetBlockMinDepth(targetBlock)
+
+    local bestBlock = nil
+    local bestDepth = -1
+
+    for _, block in ipairs(blocksFolder:GetChildren()) do
+        local depth = block:GetAttribute("Depth") or 0
+        if depth > bestDepth then
+            bestDepth = depth
+            bestBlock = block
+        end
+    end
+
+    return bestBlock or GetHighestDepthBlock()
+end
+
+local function StartTargetBlockMining()
+    if targetBlockMiningConnection then
+        targetBlockMiningConnection:Disconnect()
+    end
+
+    targetBlockMiningConnection = RunService.Heartbeat:Connect(function()
+        -- ✅ UPDATED: Check both mine reset pause AND path mining pause
+        if not targetBlockMiningEnabled or isMinePaused or otherMiningPaused then return end
+
+        if not blocksFolder or not blocksFolder:IsDescendantOf(workspace) then
+            blocksFolder = GetCurrentBlocksFolder()
+            if not blocksFolder then return end
+        end
+
+        if MineRandomBlockIfSameDepth() then return end -- Mine random block if all depths are equal
+
+        local blockToMine = GetBlockInTargetRange()
+        if blockToMine and BlockExists(blockToMine) then
+            MiningService:MineBlock(blockToMine):andThen(function() end)
+        end
+    end)
+end
+
+-- Initialize blocks folder on startup
 blocksFolder = GetCurrentBlocksFolder()
 
+-- UI Elements
 local miningSection = Tabs.Mining:AddSection("Mining Controls")
-local miningToggle = Tabs.Mining:AddToggle("MiningToggle", { Title = "Auto Mining", Default = false })
-local blockDropdown = Tabs.Mining:AddDropdown("BlockSelection", { Title = "Select Blocks to Mine", Values = AllBlockNames, Multi = true, Default = {}, Searchable = true })
-blockDropdown:OnChanged(function(v) selectedBlocks = {}; for b, s in pairs(v) do if s then table.insert(selectedBlocks, b) end end end)
 
+local miningToggle = Tabs.Mining:AddToggle("MiningToggle", {
+    Title = "Auto Mining",
+    Default = false
+})
+
+local blockDropdown = Tabs.Mining:AddDropdown("BlockSelection", {
+    Title = "Select Blocks to Mine",
+    Values = AllBlockNames,
+    Multi = true,
+    Default = {},
+    Searchable = true
+})
+
+blockDropdown:OnChanged(function(value)
+    selectedBlocks = {}
+    for block, selected in pairs(value) do
+        if selected then
+            table.insert(selectedBlocks, block)
+        end
+    end
+end)
+
+-- Target Block section
 local targetSection = Tabs.Mining:AddSection("Target Block")
-local targetBlockDropdown = Tabs.Mining:AddDropdown("TargetBlockSelection", { Title = "Target Ore", Values = AllBlockNames, Multi = false, Default = "", Searchable = true })
-targetBlockDropdown:OnChanged(function(v) targetBlock = v end)
-local pathMiningDropdown = Tabs.Mining:AddDropdown("PathMiningBlocks", { Title = "Mine Blocks Along the Way", Values = FilteredBlockNames, Multi = true, Default = {}, Searchable = true })
-pathMiningDropdown:OnChanged(function(v) pathMiningBlocks = {}; for b, s in pairs(v) do if s then table.insert(pathMiningBlocks, b) end end end)
 
-local pathMiningToggle = Tabs.Mining:AddToggle("PathMining", { Title = "Mine Along the Way", Default = false, Description = "Mine selected valuable blocks while digging around" })
-pathMiningToggle:OnChanged(function(v) mineAlongPath = v; ManageMasterLoop() end)
+local targetBlockDropdown = Tabs.Mining:AddDropdown("TargetBlockSelection", {
+    Title = "Target Ore",
+    Values = AllBlockNames,
+    Multi = false,
+    Default = "",
+    Searchable = true
+})
 
-local targetMiningToggle = Tabs.Mining:AddToggle("TargetMining", { Title = "Auto Mine to Target", Default = false, Description = "Automatically mine to reach target ore's depth" })
-targetMiningToggle:OnChanged(function(v)
-    targetBlockMiningEnabled = v
-    if v then if miningEnabled then miningToggle:SetValue(false) end end
-    ManageMasterLoop()
+targetBlockDropdown:OnChanged(function(value)
+    targetBlock = value
 end)
 
-miningToggle:OnChanged(function(v)
-    miningEnabled = v
-    if v then if targetBlockMiningEnabled then targetMiningToggle:SetValue(false) end end
-    ManageMasterLoop()
+local pathMiningDropdown = Tabs.Mining:AddDropdown("PathMiningBlocks", {
+    Title = "Mine Blocks Along the Way",
+    Values = FilteredBlockNames,
+    Multi = true,
+    Default = {},
+    Searchable = true
+})
+
+pathMiningDropdown:OnChanged(function(value)
+    pathMiningBlocks = {}
+    for block, selected in pairs(value) do
+        if selected then
+            table.insert(pathMiningBlocks, block)
+        end
+    end
+
+    -- Reset to first block type when selection changes
+    currentPathBlockIndex = 1
 end)
 
+local pathMiningToggle = Tabs.Mining:AddToggle("PathMining", {
+    Title = "Mine Along the Way",
+    Default = false,
+    Description = "Mine selected valuable blocks while digging around (pauses other mining every 10s when blocks exist)"
+})
+
+pathMiningToggle:OnChanged(function(value)
+    mineAlongPath = value
+    if value then
+        lastPauseCheck = 0 -- ✅ Reset pause timer when enabling
+        otherMiningPaused = false -- ✅ Reset pause state
+        StartPathMining()
+    elseif pathMiningConnection then
+        pathMiningConnection:Disconnect()
+        pathMiningConnection = nil
+        otherMiningPaused = false -- ✅ Resume other mining when path mining is disabled
+    end
+end)
+
+local targetMiningToggle = Tabs.Mining:AddToggle("TargetMining", {
+    Title = "Auto Mine to Target",
+    Default = false,
+    Description = "Automatically mine to reach target ore's depth"
+})
+
+targetMiningToggle:OnChanged(function(value)
+    targetBlockMiningEnabled = value
+    if value then
+        if miningEnabled then
+            miningToggle:SetValue(false)
+        end
+        StartTargetBlockMining()
+    elseif targetBlockMiningConnection then
+        targetBlockMiningConnection:Disconnect()
+        targetBlockMiningConnection = nil
+    end
+end)
+
+miningToggle:OnChanged(function(value)
+    miningEnabled = value
+    if value then
+        if targetBlockMiningEnabled then
+            targetMiningToggle:SetValue(false)
+        end
+        StartMining()
+    elseif miningConnection then
+        miningConnection:Disconnect()
+        miningConnection = nil
+    end
+end)
+
+-- Transparency section
 local transparencySection = Tabs.Mining:AddSection("Transparency")
-local transparencyToggle = Tabs.Mining:AddToggle("BlockTransparency", { Title = "Block Transparency", Default = false })
-transparencyToggle:OnChanged(function(v) ToggleBlockTransparency(v) end)
 
+local transparencyToggle = Tabs.Mining:AddToggle("BlockTransparency", {
+    Title = "Block Transparency",
+    Default = false
+})
+
+transparencyToggle:OnChanged(function(value)
+    ToggleBlockTransparency(value)
+end)
+
+-- Mine Reset Status section
 local resetSection = Tabs.Mining:AddSection("Mine Reset Status")
-local resetStatusLabel = resetSection:AddParagraph("ResetStatus", { Title = "Mine Reset Timer", Content = "Checking..." })
+
+local resetStatusLabel = resetSection:AddParagraph("ResetStatus", {
+    Title = "Mine Reset Timer",
+    Content = "Checking..."
+})
+
+-- Update reset status text continuously
 spawn(function()
     while true do
-        local s, t = pcall(function()
+        local success, text = pcall(function()
             if timeLeftLabel and timeLeftLabel:IsDescendantOf(workspace) then
-                local th = (currentPathIndex == 1 and mineResetThresholdPath1) or (currentPathIndex == 2 and mineResetThresholdPath2) or (currentPathIndex == 3 and mineResetThresholdPath3) or 0
-                local sl = ParseTimerText(timeLeftLabel.Text) or 0
-                return timeLeftLabel.Text .. " (Threshold: " .. th .. "s, Path: " .. currentPathIndex .. ", Seconds: " .. sl .. ")"
+                local currentThreshold = (currentPathIndex == 1 and mineResetThresholdPath1) or (currentPathIndex == 2 and mineResetThresholdPath2) or (currentPathIndex == 3 and mineResetThresholdPath3) or 15
+                local secondsLeft = ParseTimerText(timeLeftLabel.Text) or 0
+                return timeLeftLabel.Text .. " (Threshold: " .. currentThreshold .. "s, Path: " .. currentPathIndex .. ", Seconds: " .. secondsLeft .. ")"
             end
+
             return "Timer not found"
         end)
-        resetStatusLabel:SetContent("Mine Reset: " .. (s and t or "Error"))
+
+        if success then
+            resetStatusLabel:SetContent("Mine Reset: " .. text)
+        else
+            resetStatusLabel:SetContent("Mine Reset: Error getting timer")
+        end
         wait(1)
     end
 end)
 
 StartMineResetMonitoring()
+
+spawn(function()
+    while true do
+        wait(25) -- Wait 25 seconds
+        
+        -- Check if mine along the way toggle is on
+        if pathMiningToggle.Value then
+            -- Turn it off and back on to refresh
+            pathMiningToggle:SetValue(false)
+            wait(1)
+            pathMiningToggle:SetValue(true)
+            wait(0.1) -- Small delay
+            pathMiningToggle:SetValue(true)
+        end
+    end
+end)
+
+
+-- Minimal garbage collector
+spawn(function()
+    while wait(3) do 
+        pcall(function() collectgarbage("collect") end)
+        gcinfo()
+    end
+end)
+
 -- Add Smelt Ores Section
 local SmeltSection = Tabs.Mining:AddSection("Smelt Ores")
 
@@ -2541,6 +2829,7 @@ task.spawn(function()
     end
 end)
 
+
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
 InterfaceManager:SetLibrary(Library)
@@ -2550,8 +2839,10 @@ InterfaceManager:SetFolder("FluentScriptHub")
 SaveManager:SetFolder("FluentScriptHub/specific-game")
 
 
-
 InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 SaveManager:LoadAutoloadConfig()
+
+
+
