@@ -1645,102 +1645,20 @@ local function GetHighestDepthBlock(blocks)
     return highestBlock
 end
 
-local function GetOptimalDepthForBlocks(selectedBlocksList)
-    if not selectedBlocksList or #selectedBlocksList == 0 then
-        return math.huge -- Default to deepest if no blocks selected
-    end
-    
-    local currentZone = GetCurrentZone()
-    if not currentZone then
-        return math.huge
-    end
-    
-    local layerData = LayerInfoModule[currentZone]
-    if not layerData then
-        return math.huge
-    end
-    
-    local bestDepth = -1 -- ✅ FIXED: Initialize to -1 instead of math.huge
-    local highestTotalChance = 0
-    
-    -- Check each layer to find where selected blocks have highest combined spawn rate
-    for _, layer in ipairs(layerData) do
-        local totalChance = 0
-        local hasSelectedBlocks = false
-        
-        -- Calculate total spawn chance for all selected blocks in this layer
-        for _, blockName in ipairs(selectedBlocksList) do
-            for spawnableBlock, chance in pairs(layer.Spawnable) do
-                if string.find(string.lower(spawnableBlock), string.lower(blockName)) then
-                    totalChance = totalChance + chance
-                    hasSelectedBlocks = true
-                end
-            end
-        end
-        
-        -- If this layer has our blocks and better total chance, OR same chance but higher depth, update best depth
-        if hasSelectedBlocks and (totalChance > highestTotalChance or 
-           (totalChance == highestTotalChance and layer.Depth > bestDepth)) then
-            highestTotalChance = totalChance
-            bestDepth = layer.Depth
-        end
-    end
-    
-    return bestDepth == -1 and math.huge or bestDepth -- ✅ FIXED: Return math.huge if no valid depth found
-end
-
--- ✅ UPDATED: Find best block to mine with depth consideration
+-- Find best block to mine based on multi-select
 local function FindBestBlock(blocks)
-    if #selectedBlocks == 0 then
-        return GetHighestDepthBlock(blocks)
-    end
-    
-    -- Get optimal depth for selected blocks
-    local optimalDepth = GetOptimalDepthForBlocks(selectedBlocks)
-    
-    -- First priority: Find selected blocks at or near optimal depth
-    local bestBlock = nil
-    local bestDepthDiff = math.huge
-    
+    -- Check for selected blocks in view
     for _, block in ipairs(blocks) do
-        local blockDepth = block:GetAttribute("Depth") or 0
         local lowerName = string.lower(block.Name)
-        
-        -- Check if this block matches our selection
         for _, oreNameLower in ipairs(selectedBlocksLower) do
             if string.find(lowerName, oreNameLower) then
-                local depthDiff = math.abs(blockDepth - optimalDepth)
-                
-                -- Prefer blocks closer to optimal depth
-                if depthDiff < bestDepthDiff then
-                    bestDepthDiff = depthDiff
-                    bestBlock = block
-                end
-                break
+                return block
             end
         end
     end
-    
-    -- If we found a selected block, return it
-    if bestBlock then
-        return bestBlock
-    end
-    
-    -- Fallback: mine towards optimal depth
-    local targetBlock = nil
-    local smallestDepthGap = math.huge
-    
-    for _, block in ipairs(blocks) do
-        local blockDepth = block:GetAttribute("Depth") or 0
-        local depthGap = math.abs(blockDepth - optimalDepth)
-        
-        if depthGap < smallestDepthGap then
-            smallestDepthGap = depthGap
-            targetBlock = block
-        end
-    end
-    
-    return targetBlock or GetHighestDepthBlock(blocks)
+
+    -- If none found, mine the deepest block
+    return GetHighestDepthBlock(blocks)
 end
 
 local function MineRandomBlockIfSameDepth(blocks)
@@ -1799,6 +1717,7 @@ local function StartMining()
         end
     end)
 end
+
 local function StartPathMining()
     if pathMiningConnection then pathMiningConnection:Disconnect() end
 
@@ -1834,13 +1753,9 @@ local function StartPathMining()
 
         if #cachedBlocks == 0 then return end
 
-        -- ✅ NEW: Get optimal depth for path mining blocks
-        local optimalDepth = GetOptimalDepthForBlocks(pathMiningBlocks)
-
         local tried = 0
         local blockFound = false
         local blockToMine = nil
-        local bestDepthDiff = math.huge
 
         while tried < #pathMiningBlocks do
             local currentTargetLower = pathMiningBlocksLower[currentPathBlockIndex]
@@ -1849,14 +1764,8 @@ local function StartPathMining()
             for _, block in ipairs(cachedBlocks) do
                 if string.find(string.lower(block.Name), currentTargetLower) and BlockExists(block) then
                     foundCount = foundCount + 1
-                    
-                    -- ✅ NEW: Prefer blocks closer to optimal depth
-                    local blockDepth = block:GetAttribute("Depth") or 0
-                    local depthDiff = math.abs(blockDepth - optimalDepth)
-                    
-                    if not blockToMine or depthDiff < bestDepthDiff then
+                    if not blockToMine then
                         blockToMine = block
-                        bestDepthDiff = depthDiff
                     end
                 end
             end
@@ -1879,13 +1788,20 @@ local function StartPathMining()
     end)
 end
 
--- ✅ UPDATED: Get block in target range with optimal depth calculation
-local function GetBlockInTargetRange(blocks)
-    if not targetBlock then 
-        return GetHighestDepthBlock(blocks) 
+-- Get minimum depth for a block
+local function GetBlockMinDepth(blockName)
+    for _, layerData in ipairs(LayerInfoModule) do
+        if layerData.Spawnable and layerData.Spawnable[blockName] then
+            return layerData.Depth or 0
+        end
     end
+    return 0
+end
 
-    -- First check if target block exists in current blocks
+-- Get a block to mine when targeting
+local function GetBlockInTargetRange(blocks)
+    if not targetBlock then return GetHighestDepthBlock(blocks) end
+
     local lowerTargetBlock = string.lower(targetBlock)
     for _, block in ipairs(blocks) do
         if string.find(string.lower(block.Name), lowerTargetBlock) then
@@ -1893,24 +1809,7 @@ local function GetBlockInTargetRange(blocks)
         end
     end
 
-    -- ✅ NEW: Calculate optimal depth for target block
-    local optimalDepth = GetOptimalDepthForBlocks({targetBlock})
-    
-    -- Mine towards the optimal depth for the target block
-    local bestBlock = nil
-    local smallestDepthGap = math.huge
-    
-    for _, block in ipairs(blocks) do
-        local blockDepth = block:GetAttribute("Depth") or 0
-        local depthGap = math.abs(blockDepth - optimalDepth)
-        
-        if depthGap < smallestDepthGap then
-            smallestDepthGap = depthGap
-            bestBlock = block
-        end
-    end
-
-    return bestBlock or GetHighestDepthBlock(blocks)
+    return GetHighestDepthBlock(blocks)
 end
 
 local function StartTargetBlockMining()
