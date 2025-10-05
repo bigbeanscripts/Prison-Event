@@ -935,20 +935,20 @@ end
 task.spawn(function()
     while true do
         local player = game.Players.LocalPlayer
-        local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Mining Tower Key/1")
 
-        local keyAmount = "No Mining Keys"
-        if keyObject and keyObject:FindFirstChild("ButtonDisplay") and keyObject.ButtonDisplay:FindFirstChild("Amt") then
-            keyAmount = keyObject.ButtonDisplay.Amt.Text
-        end
+        -- Safe one-line key amount retrieval
+        local keyAmount = game.Players.LocalPlayer.PlayerGui:FindFirstChild("GameUI") and game.Players.LocalPlayer.PlayerGui.GameUI:FindFirstChild("Menus") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus:FindFirstChild("Inventory") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory:FindFirstChild("Display") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display:FindFirstChild("Items") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items:FindFirstChild("MainFrame") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame:FindFirstChild("ScrollingFrame") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame:FindFirstChild("KeysStorage") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage:FindFirstChild("Objects") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Mining Tower Key/1") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Mining Tower Key/1"]:FindFirstChild("ButtonDisplay") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Mining Tower Key/1"].ButtonDisplay:FindFirstChild("Amt") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Mining Tower Key/1"].ButtonDisplay.Amt.Text or "No Mining Keys"
 
         local inTower, towerName = CheckTowerStatus()
         local statusText = "Mining Keys: " .. keyAmount .. "\nIn Tower: " .. (inTower and "Yes (" .. towerName .. ")" or "No")
-
         TowerKeysStatus:SetValue(statusText)
+
         task.wait(1)
     end
 end)
+
+
+
 
 -- Manual Tower Buttons
 TowerSection:AddButton({
@@ -1013,7 +1013,7 @@ AutoTowerToggle:OnChanged(function()
                 local inTower, _ = CheckTowerStatus()
 
                 -- Check current key amount
-                local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Mining Tower Key/1")
+                local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Mining Tower Key/1") or "0"
                 local currentKeyAmount = 0
 
                 if keyObject and keyObject:FindFirstChild("ButtonDisplay") and keyObject.ButtonDisplay:FindFirstChild("Amt") then
@@ -1097,24 +1097,22 @@ local TowerKeysStatus1 = TowerSection1:Paragraph("TowerKeysStatus1", {
 })
 
 
--- Passive Status Updater
+-- Passive Status Updater for Skateboard Tower Key
 task.spawn(function()
     while true do
         local player = game.Players.LocalPlayer
-        local KeyObject1 = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Skateboard Tower Key/1"]
 
-        local keyAmount = "No Skateboard Keys"
-        if KeyObject1 and KeyObject1:FindFirstChild("ButtonDisplay") and KeyObject1.ButtonDisplay:FindFirstChild("Amt") then
-            keyAmount = KeyObject1.ButtonDisplay.Amt.Text
-        end
+        -- Safe one-line key amount retrieval
+        local KeyAmount1 = game.Players.LocalPlayer.PlayerGui:FindFirstChild("GameUI") and game.Players.LocalPlayer.PlayerGui.GameUI:FindFirstChild("Menus") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus:FindFirstChild("Inventory") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory:FindFirstChild("Display") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display:FindFirstChild("Items") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items:FindFirstChild("MainFrame") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame:FindFirstChild("ScrollingFrame") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame:FindFirstChild("KeysStorage") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage:FindFirstChild("Objects") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Skateboard Tower Key/1") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Skateboard Tower Key/1"]:FindFirstChild("ButtonDisplay") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Skateboard Tower Key/1"].ButtonDisplay:FindFirstChild("Amt") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Skateboard Tower Key/1"].ButtonDisplay.Amt.Text or "No Skateboard Keys"
 
         local inTower, towerName = CheckTowerStatus()
-        local statusText = "Skateboard Keys: " .. keyAmount .. "\nIn Tower: " .. (inTower and "Yes (" .. towerName .. ")" or "No")
+        local statusText = "Skateboard Keys: " .. KeyAmount1 .. "\nIn Tower: " .. (inTower and "Yes (" .. towerName .. ")" or "No")
 
         TowerKeysStatus1:SetValue(statusText)
         task.wait(1)
     end
 end)
+
 
 -- Manual Tower Buttons
 TowerSection1:AddButton({
@@ -1159,14 +1157,14 @@ TowerSection1:AddButton({
     end
 })
 -- Auto Tower Toggle
-local AutoTowerToggle = TowerSection1:AddToggle("AutoTower", {
+local AutoTowerToggle1 = TowerSection1:AddToggle("AutoTower", {
     Title = "Auto Tower (250 keys)",
     Description = "Will auto complete the tower doing 250 keys each time. Temporarily disables Auto Fight/Click.",
     Default = false
 })
 
-AutoTowerToggle:OnChanged(function()
-    if AutoTowerToggle.Value then
+AutoTowerToggle1:OnChanged(function()
+    if AutoTowerToggle1.Value then
         spawn(function()
             -- Initialize state variables for this session
             local player = game.Players.LocalPlayer
@@ -1175,7 +1173,7 @@ AutoTowerToggle:OnChanged(function()
             local wasAutoClickOn = false
             local previousKeyAmount1 = 0
 
-            while AutoTowerToggle.Value do
+            while AutoTowerToggle1.Value do
                 local inTower, _ = CheckTowerStatus()
 
                 -- Check current key amount
