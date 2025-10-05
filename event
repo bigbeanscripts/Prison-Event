@@ -120,8 +120,9 @@ end)
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
-    -- Check player attributes first
-    if player:GetAttribute("ZonePlayfulMines") then
+    if player:GetAttribute("ZoneCityMines") then
+        return "CityMines"
+    elseif player:GetAttribute("ZonePlayfulMines") then
         return "PlayfulMines"
     elseif player:GetAttribute("ZoneDesertMines") then
         return "DesertMines"
@@ -471,7 +472,8 @@ local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 local npcLocations = {
     MinersDreamland = workspace.GameObjects.ArmWrestling.MinersDreamland.NPC,
     DesertMines = workspace.GameObjects.ArmWrestling.DesertMines.NPC,
-    PlayfulMines = workspace.GameObjects.ArmWrestling.PlayfulMines.NPC
+    PlayfulMines = workspace.GameObjects.ArmWrestling.PlayfulMines.NPC,
+    CityMines = workspace.GameObjects.ArmWrestling.CityMines.NPC
 
 }
 
@@ -858,6 +860,22 @@ AutoHatchToggle:OnChanged(function()
     end
 end)
 
+local AutoClickSection = Tabs.Tower:AddSection("Auto Click")
+
+-- Auto Click for Tower
+local AutoClickTowerToggle = AutoClickSection:AddToggle("AutoClickTower", {
+    Title = "Auto Click",
+    Description = "Auto clicks during tower fights. This is because the normal auto click/crit will break the tower.",
+    Default = false
+})
+
+local TowerNote1 = AutoClickSection:Paragraph("TowerNote1", {
+    Title = "Warning",
+    Content = "Before joining a tower, turn of the auto click/crit toggle in the Auto Fight Section - Main tab. If left on, the tower will break and you will lose your keys. The toggle above is what you should use for towers.",
+    TitleAlignment = "Middle",
+    ContentAlignment = Enum.TextXAlignment.Left
+})
+
 local TowerSection = Tabs.Tower:AddSection("Mining Tower")
 
 -- Tower Status
@@ -919,13 +937,13 @@ task.spawn(function()
         local player = game.Players.LocalPlayer
         local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Mining Tower Key/1")
 
-        local keyAmount = "No Keys"
+        local keyAmount = "No Mining Keys"
         if keyObject and keyObject:FindFirstChild("ButtonDisplay") and keyObject.ButtonDisplay:FindFirstChild("Amt") then
             keyAmount = keyObject.ButtonDisplay.Amt.Text
         end
 
         local inTower, towerName = CheckTowerStatus()
-        local statusText = "Keys: " .. keyAmount .. "\nIn Tower: " .. (inTower and "Yes (" .. towerName .. ")" or "No")
+        local statusText = "Mining Keys: " .. keyAmount .. "\nIn Tower: " .. (inTower and "Yes (" .. towerName .. ")" or "No")
 
         TowerKeysStatus:SetValue(statusText)
         task.wait(1)
@@ -1069,12 +1087,172 @@ AutoTowerToggle:OnChanged(function()
     end
 end)
 
--- Auto Click for Tower
-local AutoClickTowerToggle = TowerSection:AddToggle("AutoClickTower", {
-    Title = "Auto Click",
-    Description = "Auto clicks during tower fights. This is because the normal auto click/crit will break the tower.",
+
+local TowerSection1 = Tabs.Tower:AddSection("City Tower")
+
+-- Tower Status
+local TowerKeysStatus1 = TowerSection1:Paragraph("TowerKeysStatus1", {
+    Title = "Tower Status",
+    Content = "Loading..."
+})
+
+
+-- Passive Status Updater
+task.spawn(function()
+    while true do
+        local player = game.Players.LocalPlayer
+        local KeyObject1 = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Skateboard Tower Key/1"]
+
+        local keyAmount = "No Skateboard Keys"
+        if KeyObject1 and KeyObject1:FindFirstChild("ButtonDisplay") and KeyObject1.ButtonDisplay:FindFirstChild("Amt") then
+            keyAmount = KeyObject1.ButtonDisplay.Amt.Text
+        end
+
+        local inTower, towerName = CheckTowerStatus()
+        local statusText = "Skateboard Keys: " .. keyAmount .. "\nIn Tower: " .. (inTower and "Yes (" .. towerName .. ")" or "No")
+
+        TowerKeysStatus1:SetValue(statusText)
+        task.wait(1)
+    end
+end)
+
+-- Manual Tower Buttons
+TowerSection1:AddButton({
+    Title = "Use Skateboard Keys (1x)",
+    Description = "Use the Skateboard Key once.",
+    Callback = function()
+        -- End any ongoing fight before entering tower
+        pcall(function()
+            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+            local ArmWrestleService = Knit.GetService("ArmWrestleService")
+            ArmWrestleService:RequestEndFight("SkipEnd")
+        end)
+        
+        wait(0.5) 
+        
+        local args = {
+            [1] = "CityTower",
+            [2] = false
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+TowerSection1:AddButton({
+    Title = "Use All Skateboard Keys (250x)",
+    Description = "Use All Skateboard Keys (max 250 at a time).",
+    Callback = function()
+        -- End any ongoing fight before entering tower
+        pcall(function()
+            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+            local ArmWrestleService = Knit.GetService("ArmWrestleService")
+            ArmWrestleService:RequestEndFight("SkipEnd")
+        end)
+        
+        wait(0.5) -- Brief wait after ending fight
+        
+        local args = {
+            [1] = "CityTower",
+            [2] = true
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+-- Auto Tower Toggle
+local AutoTowerToggle = TowerSection1:AddToggle("AutoTower", {
+    Title = "Auto Tower (250 keys)",
+    Description = "Will auto complete the tower doing 250 keys each time. Temporarily disables Auto Fight/Click.",
     Default = false
 })
+
+AutoTowerToggle:OnChanged(function()
+    if AutoTowerToggle.Value then
+        spawn(function()
+            -- Initialize state variables for this session
+            local player = game.Players.LocalPlayer
+            local togglesDisabled = false
+            local wasAutoFightOn = false
+            local wasAutoClickOn = false
+            local previousKeyAmount1 = 0
+
+            while AutoTowerToggle.Value do
+                local inTower, _ = CheckTowerStatus()
+
+                -- Check current key amount
+                local KeyObject1 = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("SkateBoard Tower Key/1")
+                local CurrentKeyAmount1 = 0
+
+                if KeyObject1 and KeyObject1:FindFirstChild("ButtonDisplay") and KeyObject1.ButtonDisplay:FindFirstChild("Amt") then
+                    local amtText = KeyObject1.ButtonDisplay.Amt.Text
+                    CurrentKeyAmount1 = parseTowerKeyAmount(amtText)
+                end
+
+                local hasKeys = CurrentKeyAmount1 > 0
+
+                -- Handle key state transitions
+                if hasKeys and not togglesDisabled then
+                    -- Just got keys, disable other toggles
+                    wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
+                    wasAutoClickOn = AutoClickToggle and AutoClickToggle.Value or false
+
+                    if wasAutoFightOn then AutoFightToggle:SetValue(false) end
+                    if wasAutoClickOn then AutoClickToggle:SetValue(false) end
+
+                    togglesDisabled = true
+                    wait(1) -- Wait for toggles to fully disable
+                elseif not hasKeys and togglesDisabled and not inTower then
+                    -- Just ran out of keys AND not in tower, re-enable toggles
+                    wait(2) -- Wait a bit
+
+                    -- Re-enable toggles if they were on before
+                    if wasAutoFightOn and AutoFightToggle then AutoFightToggle:SetValue(true) end
+                    if wasAutoClickOn and AutoClickToggle then AutoClickToggle:SetValue(true) end
+
+                    -- Reset state flags for the next cycle
+                    wasAutoFightOn = false
+                    wasAutoClickOn = false
+                    togglesDisabled = false
+                end
+
+                if not inTower and hasKeys then
+                    -- Has keys and not in tower, enter tower
+                    -- End any ongoing fight before entering tower
+                    pcall(function()
+                        local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+                        local ArmWrestleService = Knit.GetService("ArmWrestleService")
+                        ArmWrestleService:RequestEndFight("SkipEnd")
+                    end)
+
+                    wait(0.5) -- Brief wait after ending fight
+
+                    pcall(function()
+                        local args = {
+                            [1] = "CityTower",
+                            [2] = true
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+                    end)
+                end
+
+                previousKeyAmount1 = CurrentKeyAmount1
+                wait(hasKeys and 1 or 5) -- Check more frequently when we have keys
+            end
+
+            -- ✅ Re-enable toggles when manually turned off (only if not in tower)
+            if togglesDisabled then
+                wait(1) -- Brief delay to ensure proper state
+                
+                local inTower, _ = CheckTowerStatus()
+                if not inTower then
+                    -- Re-enable toggles if they were on before
+                    if wasAutoFightOn and AutoFightToggle then AutoFightToggle:SetValue(true) end
+                    if wasAutoClickOn and AutoClickToggle then AutoClickToggle:SetValue(true) end
+                end
+            end
+        end)
+    end
+end)
+
 
 -- Variables for auto click
 local customAutoClickActive = false
@@ -1155,6 +1333,45 @@ AutoBuyToggle:OnChanged(function()
     end
 end)
 
+
+local MerchantSection1 = Tabs.Merchant:AddSection("City Merchant")
+
+local BlackMarketDropdown1 = Tabs.Merchant:AddDropdown("BlackMarketDropdown1", {
+    Title = "Select Merchant Slot(s)",
+    Values = {1, 2, 3, 4, 5},
+    Multi = true,
+    Default = {}
+})
+
+local AutoBuyToggle1 = Tabs.Merchant:AddToggle("AutoBuyToggle1", {
+    Title = "Auto Buy (Selected Slots)",
+    Default = false
+})
+
+AutoBuyToggle1:OnChanged(function()
+    if AutoBuyToggle1.Value then
+        spawn(function()
+            while true do
+                if not AutoBuyToggle1.Value then break end
+                -- Buy 3 times
+                for i = 1, 3 do
+                    for number, isSelected in pairs(BlackMarketDropdown1.Value) do
+                        if isSelected then
+                            local args = {
+                                [1] = "City Merchant",
+                                [2] = number
+                            }
+                            game:GetService("ReplicatedStorage").Packages.Knit.Services.LimitedMerchantService.RF.BuyItem:InvokeServer(unpack(args))
+                            wait(1)
+                        end
+                    end
+                end
+                wait(30) -- Wait 30 seconds before next cycle
+            end
+        end)
+    end
+end)
+
 local minersfortune = Tabs.Wheel:AddSection("Mines Fortune")
 
 
@@ -1206,10 +1423,11 @@ local LayerInfoModule = require(ReplicatedStorage.Data.LayerInfo)
 local isMinePaused = false
 local mineResetCheckConnection
 local lastCheckedTime = 0
-local mineResetThreshold = 5 -- Default threshold for path 1
-local mineResetThresholdPath1 = 5 -- Stop mining when timer is under 5s (static path)
-local mineResetThresholdPath2 = 15 -- Stop mining when timer is under 15s (dynamic path)
-local mineResetThresholdPath3 = 5 -- Stop mining when timer is under 5s (path 3)
+local mineResetThreshold = 5
+local mineResetThresholdPath1 = 5 
+local mineResetThresholdPath2 = 5 
+local mineResetThresholdPath3 = 5 
+local mineResetThresholdPath4 = 5
 local mineRestartThreshold = 19 * 60 + 57 -- Restart mining when timer is under 19m 57s
 
 local function ParseTimerText(timerText)
@@ -1286,7 +1504,8 @@ local function ExtractBlockNamesFiltered()
         ["plastic"] = true, ["hardplastic"] = true, ["redplastic"] = true, ["blueplastic"] = true, ["greenplastic"] = true,
         ["yellowplastic"] = true, ["orangeplastic"] = true, ["purpleplastic"] = true, ["pinkplastic"] = true,
         ["redhardplastic"] = true, ["bluehardplastic"] = true, ["greenhardplastic"] = true, ["yellowhardplastic"] = true,
-        ["orangehardplastic"] = true, ["purplehardplastic"] = true, ["pinkhardplastic"] = true
+        ["orangehardplastic"] = true, ["purplehardplastic"] = true, ["pinkhardplastic"] = true, ["concrete"] = true,
+        ["darkconcrete"] = true, ["darkblueconcrete"] = true
     }
 
     for _, mineLayers in pairs(LayerInfoModule) do
@@ -1374,13 +1593,29 @@ local paths = {
         else
             error("Not enough children in Mining folder")
         end
+    end,
+
+    -- Path 4: Dynamic GetChildren()[4] path (5 second threshold)
+    function()
+        local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
+            :WaitForChild("Mining", 0.1)
+        local children = miningFolder:GetChildren()
+        if #children >= 4 then
+            return children[4]:WaitForChild("MineSpawn", 0.1)
+                :WaitForChild("Attachment", 0.1)
+                :WaitForChild("BillboardGui", 0.1)
+                :WaitForChild("TimeLeft", 0.1)
+        else
+            error("Not enough children in Mining folder")
+        end
     end
 }
 
 local pathNames = {
     "workspace.GameObjects.Mining.Mining.MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)",
-    "workspace.GameObjects.Mining:GetChildren()[2].MineSpawn.Attachment.BillboardGui.TimeLeft (15s threshold)",
-    "workspace.GameObjects.Mining:GetChildren()[3].MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)"
+    "workspace.GameObjects.Mining:GetChildren()[2].MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)",
+    "workspace.GameObjects.Mining:GetChildren()[3].MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)",
+    "workspace.GameObjects.Mining:GetChildren()[4].MineSpawn.Attachment.BillboardGui.TimeLeft (5s threshold)"
 }
 
 local function UpdateBlocksFolder(newFolder)
@@ -1451,9 +1686,24 @@ local function GetCurrentBlocksFolder()
         if success and folder then
             return folder
         end
+    elseif currentPathIndex == 4 then
+        -- Path 4: workspace.GameObjects.Mining:GetChildren()[4].Blocks
+        local success, folder = pcall(function()
+            local miningFolder = workspace:WaitForChild("GameObjects", 0.1)
+                :WaitForChild("Mining", 0.1)
+            local children = miningFolder:GetChildren()
+            if #children >= 4 then
+                return children[4]:WaitForChild("Blocks", 0.1)
+            end
+            return nil
+        end)
+        if success and folder then
+            return folder
+        end
     end
     return nil
 end
+
 
 local function CheckAndSwitchPath()
     local currentTime = tick()
@@ -1521,7 +1771,7 @@ local function CheckMineReset()
     end
 
     -- Get the current threshold based on active path (ensure it's always current)
-    local currentThreshold = (currentPathIndex == 1 and mineResetThresholdPath1) or (currentPathIndex == 2 and mineResetThresholdPath2) or (currentPathIndex == 3 and mineResetThresholdPath3) or 15
+    local currentThreshold = (currentPathIndex == 1 and mineResetThresholdPath1) or (currentPathIndex == 2 and mineResetThresholdPath2) or (currentPathIndex == 3 and mineResetThresholdPath3) or (currentPathIndex == 4 and mineResetThresholdPath4) or 5
 
     -- Pause mining if below threshold
     if secondsLeft <= currentThreshold then
@@ -1554,6 +1804,9 @@ local function ToggleBlockTransparency(transparent)
         end
         if #children >= 3 then
             pcall(function() table.insert(folders, children[3]:WaitForChild("Blocks", 0.1)) end)
+        end
+        if #children >= 4 then
+            pcall(function() table.insert(folders, children[4]:WaitForChild("Blocks", 0.1)) end)
         end
 
         return folders
@@ -1811,6 +2064,7 @@ local function GetBlockInTargetRange(blocks)
 
     return GetHighestDepthBlock(blocks)
 end
+
 
 local function StartTargetBlockMining()
     if targetBlockMiningConnection then targetBlockMiningConnection:Disconnect() end
