@@ -60,8 +60,7 @@ local Window = Library:Window{
     TabWidth = 160,
     Size =  UDim2.fromOffset(580, 460),
     Resize = false, 
-    Acrylic = true,
-    Theme = "Vynixu",
+    Theme = "Darker",
     MinimizeKey = Enum.KeyCode.LeftShift
 }
 
