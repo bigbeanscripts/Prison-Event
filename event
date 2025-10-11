@@ -944,7 +944,7 @@ local player = Players.LocalPlayer
 
 local TrickOrTreatSpamToggle = TrickOrTreatSection:AddToggle("TrickOrTreatSpam", {
     Title = "Trick or Treat",
-    Description = "SOOOO OP".",
+    Description = "SOOOO OP.",
     Default = false
 })
 
