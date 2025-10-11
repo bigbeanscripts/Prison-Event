@@ -895,6 +895,25 @@ AutoBuyToggle:OnChanged(function()
 end)
 
 
+
+-- Suppress error output completely
+local old_warn = warn
+local old_error = error
+
+warn = function(...)
+    local msg = tostring(...)
+    if not msg:find("TrickOrTreat") and not msg:find("attempt to index nil") then
+        old_warn(...)
+    end
+end
+
+error = function(...)
+    local msg = tostring(...)
+    if not msg:find("TrickOrTreat") and not msg:find("attempt to index nil") then
+        old_error(...)
+    end
+end
+
 local ClaimTreatBagSection = Tabs.Trick:AddSection("Claim Items")
 
 ClaimTreatBagSection:AddButton({
@@ -914,6 +933,91 @@ ClaimTreatBagSection:AddButton({
         Knit.GetService("GraveDiggerService"):ClaimGraveDigger()
     end
 })
+
+
+local TrickOrTreatSection = Tabs.Trick:AddSection("Trick or Treat")
+
+
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local player = Players.LocalPlayer
+
+local TrickOrTreatSpamToggle = TrickOrTreatSection:AddToggle("TrickOrTreatSpam", {
+    Title = "Trick or Treat",
+    Description = "SOOOO OP".",
+    Default = false
+})
+
+local active = false
+local anchorConnection
+local old_error = error
+
+-- Prevent player being anchored
+local function preventAnchoring(character)
+    local hrp = character:WaitForChild("HumanoidRootPart", 5)
+    if not hrp then return end
+
+    if anchorConnection then
+        anchorConnection:Disconnect()
+    end
+
+    anchorConnection = hrp:GetPropertyChangedSignal("Anchored"):Connect(function()
+        if hrp.Anchored then
+            hrp.Anchored = false
+        end
+    end)
+end
+
+-- Trick or treat spam loop
+local function function1()
+    task.spawn(function()
+        while active and task.wait(0.1) do
+            local house = workspace:FindFirstChild("GameObjects")
+                and workspace.GameObjects.TrickOrTreat
+                and workspace.GameObjects.TrickOrTreat:FindFirstChild("House")
+
+            if house then
+                local RF = ReplicatedStorage.Packages.Knit.Services.TrickOrTreatService.RF
+                pcall(function()
+                    RF.RequestTrickOrTreat:InvokeServer(house)
+                    task.wait(0.01)
+                    RF.EndTrickOrTreat:InvokeServer()
+                end)
+            end
+        end
+    end)
+end
+
+-- When toggle changes
+TrickOrTreatSpamToggle:OnChanged(function()
+    if TrickOrTreatSpamToggle.Value then
+        active = true
+
+        -- Disable errors and anchors
+        error = function(...) end
+        if player.Character then
+            preventAnchoring(player.Character)
+        end
+        player.CharacterAdded:Connect(preventAnchoring)
+
+        -- Start infinite spam loop manager
+        task.spawn(function()
+            while active do
+                function1()
+                task.wait()
+            end
+        end)
+    else
+        active = false
+        error = old_error
+
+        if anchorConnection then
+            anchorConnection:Disconnect()
+            anchorConnection = nil
+        end
+    end
+end)
+
 
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
