@@ -944,7 +944,7 @@ local player = Players.LocalPlayer
 
 local TrickOrTreatSpamToggle = TrickOrTreatSection:AddToggle("TrickOrTreatSpam", {
     Title = "Trick or Treat",
-    Description = "SOOOO OP.",
+    Description = "SOOOO OP...",
     Default = false
 })
 
@@ -1018,6 +1018,225 @@ TrickOrTreatSpamToggle:OnChanged(function()
     end
 end)
 
+local HideTreatNotificationsToggle = TrickOrTreatSection:AddToggle("HideTreatNotifications", {
+    Title = "Hide Treat Notifications",
+    Description = "Blocks notifications for Trick or Treat items and candy.",
+    Default = false
+})
+
+-- Notification hook variables
+local notificationHooksActive = false
+local originalCreateItemNotification, originalAddMessage, originalNotify, originalDisplayTopInfo
+
+HideTreatNotificationsToggle:OnChanged(function()
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    local Knit = require(ReplicatedStorage.Packages.Knit)
+    local NotificationController = Knit.GetController("NotificationController")
+
+    if HideTreatNotificationsToggle.Value and not notificationHooksActive then
+        -- Build blocked items list
+        local success, TrickOrTreatData = pcall(function()
+            return require(ReplicatedStorage.Data.Halloween.TrickOrTreat)
+        end)
+        if not success then return end
+
+        local blockedItems = {}
+        for zone, treatData in pairs(TrickOrTreatData.Treats) do
+            if treatData.Rewards then
+                for _, item in ipairs(treatData.Rewards) do
+                    if item.Title then
+                        blockedItems[item.Title] = true
+                    end
+                end
+            end
+        end
+        blockedItems["Candy"] = true
+        blockedItems["Halloween Candy"] = true
+
+        local function shouldBlockNotification(data)
+            if not data then return false end
+            if data.Content and type(data.Content) == "table" then
+                for _, item in pairs(data.Content) do
+                    if type(item) == "table" then
+                        local itemName = item.Title or item.Name or item.Item or item.Reward or item.Kind
+                        if itemName and blockedItems[tostring(itemName)] then
+                            return true
+                        end
+                    end
+                end
+            end
+            if data.PreContent and type(data.PreContent) == "table" then
+                for _, item in pairs(data.PreContent) do
+                    if type(item) == "table" then
+                        local itemName = item.Title or item.Name or item.Item or item.Reward or item.Kind
+                        if itemName and blockedItems[tostring(itemName)] then
+                            return true
+                        end
+                    end
+                end
+            end
+            if data.Message and type(data.Message) == "string" then
+                for itemName, _ in pairs(blockedItems) do
+                    if string.find(data.Message, tostring(itemName), 1, true) then
+                        return true
+                    end
+                end
+            end
+            return false
+        end
+
+        -- Hook controller functions
+        originalCreateItemNotification = NotificationController.CreateItemNotification
+        NotificationController.CreateItemNotification = function(self, data)
+            if shouldBlockNotification(data) then return end
+            return originalCreateItemNotification(self, data)
+        end
+
+        originalAddMessage = NotificationController.AddMessage
+        NotificationController.AddMessage = function(self, data)
+            if shouldBlockNotification(data) then return end
+            return originalAddMessage(self, data)
+        end
+
+        originalNotify = NotificationController.Notify
+        NotificationController.Notify = function(self, data)
+            if shouldBlockNotification(data) then return end
+            return originalNotify(self, data)
+        end
+
+        originalDisplayTopInfo = NotificationController.DisplayTopInfo
+        NotificationController.DisplayTopInfo = function(self, data)
+            if shouldBlockNotification(data) then return end
+            return originalDisplayTopInfo(self, data)
+        end
+
+        notificationHooksActive = true
+    elseif not HideTreatNotificationsToggle.Value and notificationHooksActive then
+        -- Restore original controller functions
+        local NotificationController = Knit.GetController("NotificationController")
+        if originalCreateItemNotification then
+            NotificationController.CreateItemNotification = originalCreateItemNotification
+        end
+        if originalAddMessage then
+            NotificationController.AddMessage = originalAddMessage
+        end
+        if originalNotify then
+            NotificationController.Notify = originalNotify
+        end
+        if originalDisplayTopInfo then
+            NotificationController.DisplayTopInfo = originalDisplayTopInfo
+        end
+        notificationHooksActive = false
+    end
+end)
+
+local CauldronSection = Tabs.Trick:Section("Cauldron Brewing")
+
+local brewing = require(game:GetService("ReplicatedStorage").Data.Halloween.Brewing)
+
+
+-- Add dropdown and toggle to Cauldron section
+local itemTitles = {}
+local recipeMap = {}
+
+for i, recipe in ipairs(brewing.Recipes.Halloween) do
+    local title = "Unknown"
+    if type(recipe.Reward) == "table" then
+        title = recipe.Reward.Title or recipe.Reward.Item or tostring(i)
+    elseif type(recipe.Reward) == "string" then
+        title = recipe.Reward
+    end
+    table.insert(itemTitles, title)
+    recipeMap[title] = recipe
+end
+
+local SelectItemDropdown = CauldronSection:AddDropdown("SelectItemDropdown", {
+    Title = "Select Item",
+    Values = itemTitles,
+    Multi = true, -- Multi-select enabled
+    Default = {},
+})
+
+local AutoBrewToggle = CauldronSection:AddToggle("AutoBrewToggle", {
+    Title = "Auto Brew",
+    Description = "Automatically brews a random selected item when ready.",
+    Default = false
+})
+
+AutoBrewToggle:OnChanged(function()
+    if AutoBrewToggle.Value then
+        spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            local Knit = require(ReplicatedStorage.Packages.Knit.KnitClient)
+            local RealTime = require(ReplicatedStorage.Vendor.RealTime)
+            local CustomReplicaController = Knit.GetController("CustomReplicaController")
+            local replica = CustomReplicaController:GetReplica()
+
+            while AutoBrewToggle.Value do
+                -- Gather selected items
+                local selectedItems = {}
+                for item, selected in pairs(SelectItemDropdown.Value) do
+                    if selected then
+                        table.insert(selectedItems, item)
+                    end
+                end
+
+                if #selectedItems > 0 and replica and replica.Data and replica.Data.Events and replica.Data.Events.Halloween then
+                    local brewingTimer = replica.Data.Events.Halloween.BrewingTimer
+                    local currentTime = RealTime()
+                    local elapsed = currentTime - brewingTimer
+                    if elapsed >= 60 then
+                        -- Pick a random item from selected
+                        local selectedTitle = selectedItems[math.random(1, #selectedItems)]
+                        local recipe = recipeMap[selectedTitle]
+                        if recipe then
+                            local itemsTable = {}
+                            local slot = 1
+                            for id, amount in pairs(recipe.Ingredients) do
+                                itemsTable[tostring(id)] = {Slot = slot, Amount = amount}
+                                slot = slot + 1
+                            end
+                            Knit.GetService("BrewingService"):Brew(itemsTable)
+                        end
+                    end
+                end
+                wait(1)
+            end
+        end)
+    end
+end)
+
+local ReciepeSection = Tabs.Trick:AddSection("Recipes")
+
+-- Build ingredient lookup
+local ingredientNames = {}
+for id, info in pairs(brewing.Ingredients.Halloween) do
+    ingredientNames[id] = info.Item or tostring(id)
+end
+
+-- Add a paragraph for each recipe
+for i, recipe in ipairs(brewing.Recipes.Halloween) do
+    local rewardTitle = "Unknown"
+
+    if type(recipe.Reward) == "table" then
+        rewardTitle = recipe.Reward.Title or recipe.Reward.Item or "Unknown"
+    elseif type(recipe.Reward) == "string" then
+        rewardTitle = recipe.Reward
+    end
+
+    -- Format ingredients: Name (xAmount)
+    local ingredientsList = {}
+    for id, amount in pairs(recipe.Ingredients or {}) do
+        local name = ingredientNames[id] or tostring(id)
+        table.insert(ingredientsList, string.format("%s (%dx)", name, amount))
+    end
+
+    -- Add a paragraph per recipe
+    ReciepeSection:Paragraph(`Recipe #{i}`, {
+        Title = string.format("Recipe: %s", rewardTitle),
+        Content = "Ingredients: " .. table.concat(ingredientsList, ", ")
+    })
+end
 
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
