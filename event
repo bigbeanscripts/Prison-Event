@@ -1051,7 +1051,6 @@ AutoTrickOrTreatToggle:OnChanged(function()
                                         for _, connection in pairs(getconnections(button.MouseButton1Up)) do
                                             connection:Fire()
                                         end
-                                        print("Button fired (attempt " .. (attempts + 1) .. ")")
                                         break
                                     end
                                 end
@@ -1063,14 +1062,12 @@ AutoTrickOrTreatToggle:OnChanged(function()
                             
                             -- If shouldMoveToNext is true, it worked
                             if shouldMoveToNext then
-                                print("House completed successfully!")
                                 return true
                             end
                         end
                         
                         -- If we exhausted all attempts, move to next house
                         if attempts >= maxAttempts then
-                            print("Max attempts reached, moving to next house")
                             shouldMoveToNext = true
                         end
                     end
@@ -1083,7 +1080,6 @@ AutoTrickOrTreatToggle:OnChanged(function()
                 currentHouse = getNextAvailableHouse()
                 
                 if currentHouse then
-                    print("Found available house, claiming...")
                     shouldMoveToNext = false
                     claimHouse(currentHouse)
                     
@@ -1094,7 +1090,6 @@ AutoTrickOrTreatToggle:OnChanged(function()
                     
                     task.wait(0.5)
                 else
-                    print("No available houses, checking again in 3 seconds...")
                     task.wait(3)
                 end
             end
