@@ -939,7 +939,6 @@ local AutoTrickOrTreatToggle = TrickOrTreatSection:AddToggle("AutoTrickOrTreat",
 })
 
 
-
 local RemoveAnimationToggle = TrickOrTreatSection:AddToggle("RemoveAnimation", {
     Title = "Remove Animation",
     Description = "Removes camera movement and HUD changes during trick or treat.",
@@ -991,13 +990,12 @@ RemoveAnimationToggle:OnChanged(function()
 end)
 
 
-
 -- Auto Trick or Treat logic
 local autoTrickOrTreatThread = nil
 AutoTrickOrTreatToggle:OnChanged(function()
     if AutoTrickOrTreatToggle.Value then
         autoTrickOrTreatThread = task.spawn(function()
-            local isProcessing = false
+            local currentHouse = nil
             local shouldMoveToNext = false
 
             -- Hook EndTrickOrTreat to detect when a house is completed
@@ -1019,29 +1017,61 @@ AutoTrickOrTreatToggle:OnChanged(function()
                 return not billboardGui.Enabled
             end
 
+            local function getNextAvailableHouse()
+                local houses = CollectionService:GetTagged("TrickOrTreat")
+                for _, house in houses do
+                    if isHouseAvailable(house) then
+                        return house
+                    end
+                end
+                return nil
+            end
+
             local function claimHouse(house)
                 local door = house:WaitForChild("Door")
                 local primary = door:WaitForChild("Primary")
-                local charSpawn = primary:WaitForChild("CharSpawn")
                 local knockAtt = primary:WaitForChild("KnockAtt")
                 local character = LocalPlayer.Character
                 if character then
                     local hrp = character:FindFirstChild("HumanoidRootPart")
                     if hrp then
-                        local extentsSize = character:GetExtentsSize()
-                        character:PivotTo(charSpawn.WorldCFrame * CFrame.new(0, extentsSize.Y / 2, 0))
+                        -- Teleport to the button position
+                        character:PivotTo(knockAtt.WorldCFrame * CFrame.new(0, 0, 3))
                         task.wait(0.3)
+                        
                         local billboards = PlayerGui:WaitForChild("Billboards")
-                        for _, billboard in billboards:GetChildren() do
-                            if billboard:IsA("BillboardGui") and billboard.Adornee == knockAtt then
-                                local button = billboard:FindFirstChild("Button")
-                                if button then
-                                    for _, connection in pairs(getconnections(button.MouseButton1Up)) do
-                                        connection:Fire()
+                        local maxAttempts = 10
+                        local attempts = 0
+                        
+                        while attempts < maxAttempts and not shouldMoveToNext and AutoTrickOrTreatToggle.Value do
+                            for _, billboard in billboards:GetChildren() do
+                                if billboard:IsA("BillboardGui") and billboard.Adornee == knockAtt then
+                                    local button = billboard:FindFirstChild("Button")
+                                    if button then
+                                        for _, connection in pairs(getconnections(button.MouseButton1Up)) do
+                                            connection:Fire()
+                                        end
+                                        print("Button fired (attempt " .. (attempts + 1) .. ")")
+                                        break
                                     end
-                                    return true
                                 end
                             end
+                            
+                            -- Wait 1 second before next attempt
+                            task.wait(1)
+                            attempts = attempts + 1
+                            
+                            -- If shouldMoveToNext is true, it worked
+                            if shouldMoveToNext then
+                                print("House completed successfully!")
+                                return true
+                            end
+                        end
+                        
+                        -- If we exhausted all attempts, move to next house
+                        if attempts >= maxAttempts then
+                            print("Max attempts reached, moving to next house")
+                            shouldMoveToNext = true
                         end
                     end
                 end
@@ -1049,29 +1079,26 @@ AutoTrickOrTreatToggle:OnChanged(function()
             end
 
             while AutoTrickOrTreatToggle.Value do
-                if not isProcessing then
-                    local houses = CollectionService:GetTagged("TrickOrTreat")
-                    local availableHouses = {}
-                    for _, house in houses do
-                        if isHouseAvailable(house) then
-                            table.insert(availableHouses, house)
-                        end
+                -- Get the next available house (checks list every iteration)
+                currentHouse = getNextAvailableHouse()
+                
+                if currentHouse then
+                    print("Found available house, claiming...")
+                    shouldMoveToNext = false
+                    claimHouse(currentHouse)
+                    
+                    -- Wait for completion
+                    while not shouldMoveToNext and AutoTrickOrTreatToggle.Value do
+                        task.wait(0.1)
                     end
-                    if #availableHouses > 0 then
-                        for _, house in availableHouses do
-                            isProcessing = true
-                            shouldMoveToNext = false
-                            claimHouse(house)
-                            while not shouldMoveToNext and AutoTrickOrTreatToggle.Value do
-                                task.wait(0.1)
-                            end
-                            task.wait(0.5)
-                            isProcessing = false
-                        end
-                    end
+                    
+                    task.wait(0.5)
+                else
+                    print("No available houses, checking again in 3 seconds...")
+                    task.wait(3)
                 end
-                task.wait(3)
             end
+            
             -- Restore EndTrickOrTreat when toggle is off
             TrickOrTreatController.EndTrickOrTreat = originalEndTrickOrTreat
         end)
@@ -1083,7 +1110,6 @@ AutoTrickOrTreatToggle:OnChanged(function()
         TrickOrTreatController.EndTrickOrTreat = originalEndTrickOrTreat
     end
 end)
-
 
 --[[
 
@@ -1401,6 +1427,5 @@ InterfaceManager:BuildInterfaceSection(Tabs.Settings)
 SaveManager:BuildConfigSection(Tabs.Settings)
 Window:SelectTab(1)
 SaveManager:LoadAutoloadConfig()
-
 
 
