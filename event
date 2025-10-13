@@ -896,23 +896,7 @@ end)
 
 
 
--- Suppress error output completely
-local old_warn = warn
-local old_error = error
 
-warn = function(...)
-    local msg = tostring(...)
-    if not msg:find("TrickOrTreat") and not msg:find("attempt to index nil") then
-        old_warn(...)
-    end
-end
-
-error = function(...)
-    local msg = tostring(...)
-    if not msg:find("TrickOrTreat") and not msg:find("attempt to index nil") then
-        old_error(...)
-    end
-end
 
 local ClaimTreatBagSection = Tabs.Trick:AddSection("Claim Items")
 
@@ -935,8 +919,173 @@ ClaimTreatBagSection:AddButton({
 })
 
 
+local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local LocalPlayer = Players.LocalPlayer
+local Knit = require(ReplicatedStorage.Packages.Knit)
+local CameraController = Knit.GetController("CameraController")
+local TrickOrTreatController = Knit.GetController("TrickOrTreatController")
+local PlayerGui = LocalPlayer:WaitForChild("PlayerGui")
+local TrickOrTreatUI = PlayerGui:WaitForChild("TrickOrTreat")
+
 local TrickOrTreatSection = Tabs.Trick:AddSection("Trick or Treat")
 
+-- Toggles
+local AutoTrickOrTreatToggle = TrickOrTreatSection:AddToggle("AutoTrickOrTreat", {
+    Title = "Auto Trick or Treat",
+    Description = "Automatically goes to available houses and claims them.",
+    Default = false
+})
+
+
+
+local RemoveAnimationToggle = TrickOrTreatSection:AddToggle("RemoveAnimation", {
+    Title = "Remove Animation",
+    Description = "Removes camera movement and HUD changes during trick or treat.",
+    Default = false
+})
+
+-- Remove Animation logic
+local originalMoveCamTo = CameraController.MoveCamTo
+local originalToggleCamera = CameraController.ToggleCamera
+local HudManaging = require(ReplicatedStorage.Vendor.HudManaging)
+local originalClearHUD = HudManaging.ClearHUD
+local originalBringHUD = HudManaging.BringHUD
+local originalEndTrickOrTreat = TrickOrTreatController.EndTrickOrTreat
+
+RemoveAnimationToggle:OnChanged(function()
+    if RemoveAnimationToggle.Value then
+        CameraController.MoveCamTo = function(...)
+            local Promise = require(ReplicatedStorage.Packages.Promise)
+            return Promise.resolve()
+        end
+        CameraController.ToggleCamera = function() end
+        HudManaging.ClearHUD = function() end
+        HudManaging.BringHUD = function() end
+        TrickOrTreatUI.Enabled = false
+
+        -- Prevent character anchoring
+        local function preventAnchoring()
+            local character = LocalPlayer.Character
+            if character then
+                local hrp = character:FindFirstChild("HumanoidRootPart")
+                if hrp then
+                    hrp:GetPropertyChangedSignal("Anchored"):Connect(function()
+                        if hrp.Anchored then
+                            hrp.Anchored = false
+                        end
+                    end)
+                end
+            end
+        end
+        LocalPlayer.CharacterAdded:Connect(preventAnchoring)
+        preventAnchoring()
+    else
+        CameraController.MoveCamTo = originalMoveCamTo
+        CameraController.ToggleCamera = originalToggleCamera
+        HudManaging.ClearHUD = originalClearHUD
+        HudManaging.BringHUD = originalBringHUD
+        -- UI will be handled by game normally
+    end
+end)
+
+
+
+-- Auto Trick or Treat logic
+local autoTrickOrTreatThread = nil
+AutoTrickOrTreatToggle:OnChanged(function()
+    if AutoTrickOrTreatToggle.Value then
+        autoTrickOrTreatThread = task.spawn(function()
+            local isProcessing = false
+            local shouldMoveToNext = false
+
+            -- Hook EndTrickOrTreat to detect when a house is completed
+            local hookedEnd = function(self, house)
+                shouldMoveToNext = true
+                return originalEndTrickOrTreat(self, house)
+            end
+            TrickOrTreatController.EndTrickOrTreat = hookedEnd
+
+            local function isHouseAvailable(house)
+                local door = house:FindFirstChild("Door")
+                if not door then return false end
+                local primary = door:FindFirstChild("Primary")
+                if not primary then return false end
+                local timerAtt = primary:FindFirstChild("TimerAtt")
+                if not timerAtt then return false end
+                local billboardGui = timerAtt:FindFirstChild("BillboardGui")
+                if not billboardGui then return false end
+                return not billboardGui.Enabled
+            end
+
+            local function claimHouse(house)
+                local door = house:WaitForChild("Door")
+                local primary = door:WaitForChild("Primary")
+                local charSpawn = primary:WaitForChild("CharSpawn")
+                local knockAtt = primary:WaitForChild("KnockAtt")
+                local character = LocalPlayer.Character
+                if character then
+                    local hrp = character:FindFirstChild("HumanoidRootPart")
+                    if hrp then
+                        local extentsSize = character:GetExtentsSize()
+                        character:PivotTo(charSpawn.WorldCFrame * CFrame.new(0, extentsSize.Y / 2, 0))
+                        task.wait(0.3)
+                        local billboards = PlayerGui:WaitForChild("Billboards")
+                        for _, billboard in billboards:GetChildren() do
+                            if billboard:IsA("BillboardGui") and billboard.Adornee == knockAtt then
+                                local button = billboard:FindFirstChild("Button")
+                                if button then
+                                    for _, connection in pairs(getconnections(button.MouseButton1Up)) do
+                                        connection:Fire()
+                                    end
+                                    return true
+                                end
+                            end
+                        end
+                    end
+                end
+                return false
+            end
+
+            while AutoTrickOrTreatToggle.Value do
+                if not isProcessing then
+                    local houses = CollectionService:GetTagged("TrickOrTreat")
+                    local availableHouses = {}
+                    for _, house in houses do
+                        if isHouseAvailable(house) then
+                            table.insert(availableHouses, house)
+                        end
+                    end
+                    if #availableHouses > 0 then
+                        for _, house in availableHouses do
+                            isProcessing = true
+                            shouldMoveToNext = false
+                            claimHouse(house)
+                            while not shouldMoveToNext and AutoTrickOrTreatToggle.Value do
+                                task.wait(0.1)
+                            end
+                            task.wait(0.5)
+                            isProcessing = false
+                        end
+                    end
+                end
+                task.wait(3)
+            end
+            -- Restore EndTrickOrTreat when toggle is off
+            TrickOrTreatController.EndTrickOrTreat = originalEndTrickOrTreat
+        end)
+    else
+        if autoTrickOrTreatThread then
+            task.cancel(autoTrickOrTreatThread)
+            autoTrickOrTreatThread = nil
+        end
+        TrickOrTreatController.EndTrickOrTreat = originalEndTrickOrTreat
+    end
+end)
+
+
+--[[
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -944,13 +1093,13 @@ local player = Players.LocalPlayer
 
 local TrickOrTreatSpamToggle = TrickOrTreatSection:AddToggle("TrickOrTreatSpam", {
     Title = "Trick or Treat",
-    Description = "SOOOO OP...",
+    Description = "SOOOO OP... This causes a lot of lag, and you might need to wait a few seconds after turning this toggle off to stop seeing notifications.",
     Default = false
 })
 
 local active = false
 local anchorConnection
-local old_error = error
+
 
 -- Prevent player being anchored
 local function preventAnchoring(character)
@@ -1009,7 +1158,6 @@ TrickOrTreatSpamToggle:OnChanged(function()
         end)
     else
         active = false
-        error = old_error
 
         if anchorConnection then
             anchorConnection:Disconnect()
@@ -1129,6 +1277,8 @@ HideTreatNotificationsToggle:OnChanged(function()
         notificationHooksActive = false
     end
 end)
+
+--]]
 
 local CauldronSection = Tabs.Trick:Section("Cauldron Brewing")
 
