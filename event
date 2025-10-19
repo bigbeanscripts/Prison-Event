@@ -903,6 +903,39 @@ end)
 
 
 
+-- Client-side patch for SimplePath
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SimplePath = require(ReplicatedStorage:WaitForChild("OOP"):WaitForChild("SimplePath"))
+
+-- Patch __index to avoid errors
+local mt = getmetatable(SimplePath)
+if mt and mt.__index then
+    local oldIndex = mt.__index
+    mt.__index = function(self, key)
+        local ok, res = pcall(function()
+            return oldIndex(self, key)
+        end)
+        return ok and res or nil
+    end
+end
+
+-- Patch distance functions to avoid nil comparisons
+for key, value in pairs(SimplePath) do
+    if type(value) == "function" then
+        SimplePath[key] = function(...)
+            local args = {...}
+            -- Replace nil vectors/positions with Vector3.zero
+            for i = 1, #args do
+                if typeof(args[i]) == "Vector3" and args[i] == nil then
+                    args[i] = Vector3.new(0,0,0)
+                end
+            end
+            local ok, res = pcall(value, ...)
+            return ok and res or math.huge
+        end
+    end
+end
+
 
 local ClaimTreatBagSection = Tabs.Trick:AddSection("Claim Items")
 
@@ -940,7 +973,7 @@ local TrickOrTreatSection = Tabs.Trick:AddSection("Trick or Treat")
 -- Toggles
 local AutoTrickOrTreatToggle = TrickOrTreatSection:AddToggle("AutoTrickOrTreat", {
     Title = "Auto Trick or Treat",
-    Description = "Automatically trick or treats.",
+    Description = "Automatically trick or treats. You will pause for about 120 seconds afer going to all houses. This is to let them reset.",
     Default = false
 })
 
@@ -995,7 +1028,6 @@ RemoveAnimationToggle:OnChanged(function()
     end
 end)
 
-
 local autoTrickOrTreatThread = nil
 
 AutoTrickOrTreatToggle:OnChanged(function()
@@ -1009,6 +1041,8 @@ AutoTrickOrTreatToggle:OnChanged(function()
 
             while AutoTrickOrTreatToggle.Value do
                 local houses = workspace.GameObjects.TrickOrTreat:GetChildren()
+                local roundStart = tick() -- Start timer at first house
+
                 for i = 1, #houses do
                     local house = houses[i]
                     if house and house:FindFirstChild("Door") and house.Door:FindFirstChild("Primary") then
@@ -1025,7 +1059,10 @@ AutoTrickOrTreatToggle:OnChanged(function()
                         end
                     end
                 end
-                task.wait(180)
+
+                local elapsed = tick() - roundStart
+                local waitTime = math.max(0, 125 - elapsed)
+                task.wait(waitTime)
             end
         end)
     else
@@ -1265,9 +1302,18 @@ AutoDigGravesToggle:OnChanged(function()
         end)
     end
 end)
-
-
 local ZombiesSection = Tabs.Trick:AddSection("Zombies")
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Knit = require(ReplicatedStorage.Packages.Knit)
+local GraveMonsterController = Knit.GetController("GraveMonsterController")
+local GraveMonsterService = Knit.GetService("GraveMonsterService")
+local TweenService = game:GetService("TweenService")
+
+-- Save the original AttackMonster function
+local originalAttackMonster = GraveMonsterController.AttackMonster
+
+local autoAttackThread = nil
 
 local AutoBeatZombiesToggle = ZombiesSection:AddToggle("AutoBeatZombies", {
     Title = "Auto Beat Zombies",
@@ -1277,29 +1323,62 @@ local AutoBeatZombiesToggle = ZombiesSection:AddToggle("AutoBeatZombies", {
 
 AutoBeatZombiesToggle:OnChanged(function()
     if AutoBeatZombiesToggle.Value then
-        spawn(function()
-            local ReplicatedStorage = game:GetService("ReplicatedStorage")
-            local GraveMonsterController = require(ReplicatedStorage.Controllers.GraveMonsterController)
-            local Event = ReplicatedStorage.Packages.Knit.Services.GraveMonsterService.RF.AttackMonster
-
-            local activeThreads = {}
-
-            while AutoBeatZombiesToggle.Value do
-                for id, monster in pairs(GraveMonsterController.Monsters) do
-                    if not activeThreads[id] then
-                        activeThreads[id] = true
-                        task.spawn(function()
-                            while AutoBeatZombiesToggle.Value and GraveMonsterController.Monsters[id] do
-                                Event:InvokeServer(id)
-                                task.wait()
+        -- a(): Override AttackMonster to remove distance check
+        GraveMonsterController.AttackMonster = function(p44, p45)
+            local v_u_10 = require(ReplicatedStorage.Data.Halloween.GraveMonsters)
+            local v_u_17 = GraveMonsterController
+            local v_u_13 = game:GetService("Players").LocalPlayer.Character or game:GetService("Players").LocalPlayer.CharacterAdded:Wait()
+            local v46 = v_u_13.PrimaryPart
+            if v46 then
+                local v47 = v_u_17.GetGraveModelById(p44)
+                if v47 then
+                    local v48 = p45.PrimaryPart
+                    if v48 then
+                        local v49 = v47:GetAttribute("Zone")
+                        local v50 = v_u_10.Monsters[v49][p45.Name]
+                        if v50 then
+                            local _, v52 = GraveMonsterService:AttackMonster(p44):await()
+                            if v52 then
+                                local v53 = v52.NewHealth
+                                local v54 = p45:GetAttribute("StartHealth")
+                                local v55 = v53 / v54
+                                local v56 = UDim2.fromScale(v55, 1)
+                                local v57 = p45:WaitForChild("Head"):WaitForChild("Health")
+                                v57.Health.Text = v53 .. "/" .. v54 .. " HP"
+                                TweenService:Create(v57.Bar.Progress, TweenInfo.new(0.15, Enum.EasingStyle.Sine), {
+                                    ["Size"] = v56
+                                }):Play()
+                                if v52.Defeated then
+                                    GraveMonsterController.DefeatMonster(p44, p45)
+                                end
                             end
-                            activeThreads[id] = nil
-                        end)
+                        end
                     end
                 end
+            end
+        end
+
+        -- b(): Simulate attack input (game thinks you are clicking)
+        local fakeInput = {
+            UserInputType = Enum.UserInputType.MouseButton1,
+            KeyCode = Enum.KeyCode.Unknown
+        }
+
+        autoAttackThread = task.spawn(function()
+            while AutoBeatZombiesToggle.Value do
+                GraveMonsterController.InputBegan(fakeInput, false)
                 task.wait()
             end
         end)
+    else
+        -- Restore the original AttackMonster function
+        GraveMonsterController.AttackMonster = originalAttackMonster
+
+        -- Stop simulated input thread
+        if autoAttackThread then
+            task.cancel(autoAttackThread)
+            autoAttackThread = nil
+        end
     end
 end)
 
