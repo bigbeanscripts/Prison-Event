@@ -1367,13 +1367,13 @@ AutoBeatZombiesToggle:OnChanged(function()
                         task.spawn(function()
                             while AutoBeatZombiesToggle.Value and GraveMonsterController.Monsters[id] do
                                 Event:InvokeServer(id)
-                                task.wait(0.1)
+                                task.wait()
                             end
                             activeThreads[id] = nil
                         end)
                     end
                 end
-                task.wait(0.2)
+                task.wait()
             end
         end)
     end
