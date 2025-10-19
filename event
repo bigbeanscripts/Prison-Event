@@ -67,6 +67,8 @@ local Tabs = {
     Eggs = Window:AddTab({ Title = "Eggs", Icon = "egg" }),
     Merchant = Window:AddTab({ Title = "Merchant", Icon = "phosphor-shopping-cart-fill" }),
     Trick = Window:AddTab({ Title = "Halloween", Icon = "ghost" }),
+    Wheel = Window:AddTab({ Title = "Wheel", Icon = "ferris-wheel" }),
+    Tower = Window:AddTab({ Title = "Tower", Icon = "castle" })
 }
 
 
@@ -113,7 +115,9 @@ end)
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
-    if player:GetAttribute("ZoneSpookyNeighborhood") then
+    if player:GetAttribute("ZoneHauntedMansion") then
+        return "HauntedMansion"
+    elseif player:GetAttribute("ZoneSpookyNeighborhood") then
         return "SpookyNeighborhood"
     end
 
@@ -457,7 +461,8 @@ end)
 local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 
 local npcLocations = {
-    SpookyNeighborhood = workspace.GameObjects.ArmWrestling.SpookyNeighborhood.NPC
+    SpookyNeighborhood = workspace.GameObjects.ArmWrestling.SpookyNeighborhood.NPC,
+    HauntedMansion = workspace.GameObjects.ArmWrestling.HauntedMansion.NPC
 }
 
 local modelNames = {}
@@ -797,6 +802,7 @@ local HatchAmountDropdown = Tabs.Eggs:AddDropdown("HatchAmount", {
     Title = "Hatch Amount",
     Values = {"1x", "3x", "8x", "30x", "Max"},
     Multi = false,
+    Searchable = true,
     Default = "1x"
 })
 
@@ -856,7 +862,7 @@ EventSection:AddButton({
     end
 })
 
-local MerchantSection = Tabs.Merchant:AddSection("Mining Merchant")
+local MerchantSection = Tabs.Merchant:AddSection("Halloween Merchant")
 
 local BlackMarketDropdown = Tabs.Merchant:AddDropdown("BlackMarketDropdown", {
     Title = "Select Merchant Slot(s)",
@@ -1301,10 +1307,81 @@ end)
 
 --]]
 
+local DigGravesSection = Tabs.Trick:AddSection("Dig Graves")
+
+local AutoDigGravesToggle = DigGravesSection:AddToggle("AutoDigGraves", {
+    Title = "Auto Dig Graves",
+    Description = "Automatically digs all available graves.",
+    Default = false
+})
+
+AutoDigGravesToggle:OnChanged(function()
+    if AutoDigGravesToggle.Value then
+        spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            local CollectionService = game:GetService("CollectionService")
+            local Remote = ReplicatedStorage:WaitForChild("Packages")
+                :WaitForChild("Knit")
+                :WaitForChild("Services")
+                :WaitForChild("GraveDiggerService")
+                :WaitForChild("RF")
+                :WaitForChild("DigGrave")
+            while AutoDigGravesToggle.Value do
+                local graves = CollectionService:GetTagged("GraveDigging")
+                for _, grave in ipairs(graves) do
+                    if grave and grave.Parent then
+                        pcall(function()
+                            Remote:InvokeServer(grave)
+                        end)
+                        task.wait(1)
+                    end
+                end
+                task.wait(5)
+            end
+        end)
+    end
+end)
+
+
+local ZombiesSection = Tabs.Trick:AddSection("Zombies")
+
+local AutoBeatZombiesToggle = ZombiesSection:AddToggle("AutoBeatZombies", {
+    Title = "Auto Beat Zombies",
+    Description = "Automatically attack zombies - Works while fighting bosses!",
+    Default = false
+})
+
+AutoBeatZombiesToggle:OnChanged(function()
+    if AutoBeatZombiesToggle.Value then
+        spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            local GraveMonsterController = require(ReplicatedStorage.Controllers.GraveMonsterController)
+            local Event = ReplicatedStorage.Packages.Knit.Services.GraveMonsterService.RF.AttackMonster
+
+            local activeThreads = {}
+
+            while AutoBeatZombiesToggle.Value do
+                for id, monster in pairs(GraveMonsterController.Monsters) do
+                    if not activeThreads[id] then
+                        activeThreads[id] = true
+                        task.spawn(function()
+                            while AutoBeatZombiesToggle.Value and GraveMonsterController.Monsters[id] do
+                                Event:InvokeServer(id)
+                                task.wait(0.1)
+                            end
+                            activeThreads[id] = nil
+                        end)
+                    end
+                end
+                task.wait(0.2)
+            end
+        end)
+    end
+end)
+
 local CauldronSection = Tabs.Trick:Section("Cauldron Brewing")
 
 local brewing = require(game:GetService("ReplicatedStorage").Data.Halloween.Brewing)
-
 
 -- Add dropdown and toggle to Cauldron section
 local itemTitles = {}
@@ -1325,6 +1402,7 @@ local SelectItemDropdown = CauldronSection:AddDropdown("SelectItemDropdown", {
     Title = "Select Item",
     Values = itemTitles,
     Multi = true, -- Multi-select enabled
+    Searchable = true,
     Default = {},
 })
 
@@ -1408,6 +1486,266 @@ for i, recipe in ipairs(brewing.Recipes.Halloween) do
         Content = "Ingredients: " .. table.concat(ingredientsList, ", ")
     })
 end
+
+
+local HauntedFortuneSection = Tabs.Wheel:AddSection("Haunted Fortune Wheel")
+
+local GhostFortuneSpinDropdown = Tabs.Wheel:AddDropdown("GhostFortuneSpinAmount", {
+    Title = "Spin Amount",
+    Description = "Select Wheel Spin Amount",
+    Values = {"1x", "3x", "10x"},
+    Multi = false,
+    Default = "1x"
+})
+
+local AutoGhostFortuneToggle = Tabs.Wheel:AddToggle("AutoGhostFortuneSpin", {
+    Title = "Auto Haunted Fortune Wheel",
+    Default = false
+})
+
+AutoGhostFortuneToggle:OnChanged(function()
+    if AutoGhostFortuneToggle.Value then
+        spawn(function()
+            while true do
+                if not AutoGhostFortuneToggle.Value then break end
+                
+                local args = {
+                    [1] = "Haunted Fortune",
+                    [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
+                
+                wait(1)
+            end
+        end)
+    end
+end)
+
+
+local AutoClickSection = Tabs.Tower:AddSection("Auto Click")
+
+-- Auto Click for Tower
+local AutoClickTowerToggle = AutoClickSection:AddToggle("AutoClickTower", {
+    Title = "Auto Click",
+    Description = "Auto clicks during tower fights. This is because the normal auto click/crit will break the tower.",
+    Default = false
+})
+
+local TowerNote1 = AutoClickSection:Paragraph("TowerNote1", {
+    Title = "Warning",
+    Content = "Before joining a tower, turn of the auto click/crit toggle in the Auto Fight Section - Main tab. If left on, the tower will break and you will lose your keys. The toggle above is what you should use for towers.",
+    TitleAlignment = "Middle",
+    ContentAlignment = Enum.TextXAlignment.Left
+})
+
+local TowerSection = Tabs.Tower:AddSection("Spooky Tower")
+
+-- Tower Status
+local TowerKeysStatus = TowerSection:Paragraph("TowerKeysStatus", {
+    Title = "Tower Status",
+    Content = "Loading..."
+})
+
+-- Function to parse tower key amount
+local function parseTowerKeyAmount(amtText)
+    local numStr = amtText:match("x(.+)")
+    if not numStr then return 0 end
+    if numStr:find("k") then
+        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
+        return baseNum and (baseNum * 1000) or 0
+    else
+        return tonumber(numStr) or 0
+    end
+end
+
+-- Check if currently in a tower
+local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+Knit.OnStart():await()
+
+local TowerController = Knit.GetController("TowerController")
+local TowerService = Knit.GetService("TowerService")
+
+-- Function to check tower status
+local function CheckTowerStatus()
+    local inTower = false
+    local towerName = "None"
+    
+    -- Method 1: Check TowerService for ongoing tower
+    pcall(function()
+        local playerData = Knit.GetController("CustomReplicaController"):GetReplica()
+        if playerData and playerData.Data and playerData.Data.OngoingTower then
+            inTower = true
+            towerName = playerData.Data.OngoingTower
+        end
+    end)
+    
+    -- Method 2: Check if tower UI is visible
+    if not inTower then
+        pcall(function()
+            local towerHud = game.Players.LocalPlayer.PlayerGui.GameUI.Hud.Tower
+            if towerHud and towerHud.Visible then
+                inTower = true
+                towerName = towerHud.TowerName.Text or "Unknown Tower"
+            end
+        end)
+    end
+    
+    return inTower, towerName
+end
+
+-- Passive Status Updater
+task.spawn(function()
+    while true do
+        local player = game.Players.LocalPlayer
+
+        -- Safe one-line key amount retrieval
+        local keyAmount = game.Players.LocalPlayer.PlayerGui:FindFirstChild("GameUI") and game.Players.LocalPlayer.PlayerGui.GameUI:FindFirstChild("Menus") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus:FindFirstChild("Inventory") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory:FindFirstChild("Display") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display:FindFirstChild("Items") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items:FindFirstChild("MainFrame") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame:FindFirstChild("ScrollingFrame") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame:FindFirstChild("KeysStorage") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage:FindFirstChild("Objects") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Spooky Tower Key/1") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Spooky Tower Key/1"]:FindFirstChild("ButtonDisplay") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Spooky Tower Key/1"].ButtonDisplay:FindFirstChild("Amt") and game.Players.LocalPlayer.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Spooky Tower Key/1"].ButtonDisplay.Amt.Text or "No Spooky Keys"
+
+        local inTower, towerName = CheckTowerStatus()
+        local statusText = "Spooky Keys: " .. keyAmount .. "\nIn Tower: " .. (inTower and "Yes (" .. towerName .. ")" or "No")
+        TowerKeysStatus:SetValue(statusText)
+
+        task.wait(1)
+    end
+end)
+
+
+-- Manual Tower Buttons
+TowerSection:AddButton({
+    Title = "Use Spooky Keys (1x)",
+    Description = "Use the Spooky Key once.",
+    Callback = function()
+        -- End any ongoing fight before entering tower
+        pcall(function()
+            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+            local ArmWrestleService = Knit.GetService("ArmWrestleService")
+            ArmWrestleService:RequestEndFight("SkipEnd")
+        end)
+        
+        wait(0.5) -- Brief wait after ending fight
+        
+        local args = {
+            [1] = "SpookyTower",
+            [2] = false
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+
+TowerSection:AddButton({
+    Title = "Use All Spooky Keys (250x)",
+    Description = "Use All Spooky Keys (max 250 at a time).",
+    Callback = function()
+        -- End any ongoing fight before entering tower
+        pcall(function()
+            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+            local ArmWrestleService = Knit.GetService("ArmWrestleService")
+            ArmWrestleService:RequestEndFight("SkipEnd")
+        end)
+        
+        wait(0.5) -- Brief wait after ending fight
+        
+        local args = {
+            [1] = "SpookyTower",
+            [2] = true
+        }
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+    end
+})
+-- Auto Tower Toggle
+local AutoTowerToggle = TowerSection:AddToggle("AutoTower", {
+    Title = "Auto Tower (250 keys)",
+    Description = "Will auto complete the tower doing 250 keys each time. Temporarily disables Auto Fight/Click.",
+    Default = false
+})
+
+AutoTowerToggle:OnChanged(function()
+    if AutoTowerToggle.Value then
+        spawn(function()
+            -- Initialize state variables for this session
+            local player = game.Players.LocalPlayer
+            local togglesDisabled = false
+            local wasAutoFightOn = false
+            local wasAutoClickOn = false
+            local previousKeyAmount = 0
+
+            while AutoTowerToggle.Value do
+                local inTower, _ = CheckTowerStatus()
+
+                -- Check current key amount
+                local keyObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects:FindFirstChild("Spooky Tower Key/1") or "0"
+                local currentKeyAmount = 0
+
+                if keyObject and keyObject:FindFirstChild("ButtonDisplay") and keyObject.ButtonDisplay:FindFirstChild("Amt") then
+                    local amtText = keyObject.ButtonDisplay.Amt.Text
+                    currentKeyAmount = parseTowerKeyAmount(amtText)
+                end
+
+                local hasKeys = currentKeyAmount > 0
+
+                -- Handle key state transitions
+                if hasKeys and not togglesDisabled then
+                    -- Just got keys, disable other toggles
+                    wasAutoFightOn = AutoFightToggle and AutoFightToggle.Value or false
+                    wasAutoClickOn = AutoClickToggle and AutoClickToggle.Value or false
+
+                    if wasAutoFightOn then AutoFightToggle:SetValue(false) end
+                    if wasAutoClickOn then AutoClickToggle:SetValue(false) end
+
+                    togglesDisabled = true
+                    wait(1) -- Wait for toggles to fully disable
+                elseif not hasKeys and togglesDisabled and not inTower then
+                    -- Just ran out of keys AND not in tower, re-enable toggles
+                    wait(2) -- Wait a bit
+
+                    -- Re-enable toggles if they were on before
+                    if wasAutoFightOn and AutoFightToggle then AutoFightToggle:SetValue(true) end
+                    if wasAutoClickOn and AutoClickToggle then AutoClickToggle:SetValue(true) end
+
+                    -- Reset state flags for the next cycle
+                    wasAutoFightOn = false
+                    wasAutoClickOn = false
+                    togglesDisabled = false
+                end
+
+                if not inTower and hasKeys then
+                    -- Has keys and not in tower, enter tower
+                    -- End any ongoing fight before entering tower
+                    pcall(function()
+                        local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+                        local ArmWrestleService = Knit.GetService("ArmWrestleService")
+                        ArmWrestleService:RequestEndFight("SkipEnd")
+                    end)
+
+                    wait(0.5) -- Brief wait after ending fight
+
+                    pcall(function()
+                        local args = {
+                            [1] = "SpookyTower",
+                            [2] = true
+                        }
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
+                    end)
+                end
+
+                previousKeyAmount = currentKeyAmount
+                wait(hasKeys and 1 or 5) -- Check more frequently when we have keys
+            end
+
+            -- ✅ Re-enable toggles when manually turned off (only if not in tower)
+            if togglesDisabled then
+                wait(1) -- Brief delay to ensure proper state
+                
+                local inTower, _ = CheckTowerStatus()
+                if not inTower then
+                    -- Re-enable toggles if they were on before
+                    if wasAutoFightOn and AutoFightToggle then AutoFightToggle:SetValue(true) end
+                    if wasAutoClickOn and AutoClickToggle then AutoClickToggle:SetValue(true) end
+                end
+            end
+        end)
+    end
+end)
 
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
