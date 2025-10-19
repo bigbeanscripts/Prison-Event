@@ -940,14 +940,14 @@ local TrickOrTreatSection = Tabs.Trick:AddSection("Trick or Treat")
 -- Toggles
 local AutoTrickOrTreatToggle = TrickOrTreatSection:AddToggle("AutoTrickOrTreat", {
     Title = "Auto Trick or Treat",
-    Description = "Automatically goes to available houses and claims them.",
+    Description = "Automatically trick or treats.",
     Default = false
 })
 
 
 local RemoveAnimationToggle = TrickOrTreatSection:AddToggle("RemoveAnimation", {
     Title = "Remove Animation",
-    Description = "Removes camera movement and HUD changes during trick or treat.",
+    Description = "Removes camera movement and HUD changes during trick or treat - toggle above has this enabled already",
     Default = false
 })
 
