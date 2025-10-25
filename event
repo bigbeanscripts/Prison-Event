@@ -1,6 +1,5 @@
 
-local extraEggNames = {
-}
+local extraEggNames = {"Lantern", "Bat"}
 
 local function getEggNames()
     local eggNamesSet = {}
@@ -115,7 +114,9 @@ end)
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
-    if player:GetAttribute("ZoneHauntedMansion") then
+    if player:GetAttribute("ZoneMansionBasement") then
+        return "MansionBasement"
+    elseif player:GetAttribute("ZoneHauntedMansion") then
         return "HauntedMansion"
     elseif player:GetAttribute("ZoneSpookyNeighborhood") then
         return "SpookyNeighborhood"
@@ -462,7 +463,8 @@ local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 
 local npcLocations = {
     SpookyNeighborhood = workspace.GameObjects.ArmWrestling.SpookyNeighborhood.NPC,
-    HauntedMansion = workspace.GameObjects.ArmWrestling.HauntedMansion.NPC
+    HauntedMansion = workspace.GameObjects.ArmWrestling.HauntedMansion.NPC,
+    MansionBasement = workspace.GameObjects.ArmWrestling.MansionBasement.NPC,
 }
 
 local modelNames = {}
@@ -1381,6 +1383,87 @@ AutoBeatZombiesToggle:OnChanged(function()
         end
     end
 end)
+
+
+local HauntedChestSection = Tabs.Trick:AddSection("Haunted Chest")
+
+local HauntedGoldStatus = HauntedChestSection:Paragraph("HauntedGoldStatus", {
+    Title = "Haunted Gold Amount",
+    Content = "Loading..."
+})
+
+local AutoOpenChestToggle = HauntedChestSection:AddToggle("AutoOpenChest", {
+    Title = "Auto Open Haunted Chest",
+    Description = "Automatically opens Haunted Chest when you have Haunted Gold.",
+    Default = false
+})
+
+local function parseAmount(amtText)
+    local numStr = amtText:match("x(.+)")
+    if not numStr then return 0 end
+    if numStr:find("k") then
+        local baseNum = tonumber(numStr:match("(%d+%.?%d*)k"))
+        return baseNum and (baseNum * 1000) or 0
+    else
+        return tonumber(numStr) or 0
+    end
+end
+
+local function updateGoldStatus()
+    local success, result = pcall(function()
+        local player = game.Players.LocalPlayer
+        local goldObject = player.PlayerGui.GameUI.Menus.Inventory.Display.Items.MainFrame.ScrollingFrame.KeysStorage.Objects["Spooky Gold/1"]
+        
+        if goldObject and goldObject:FindFirstChild("ButtonDisplay") and goldObject.ButtonDisplay:FindFirstChild("Amt") then
+            return goldObject.ButtonDisplay.Amt.Text
+        else
+            return nil
+        end
+    end)
+    
+    if success and result then
+        HauntedGoldStatus:SetValue(result)
+        return result
+    else
+        HauntedGoldStatus:SetValue("No Gold")
+        return nil
+    end
+end
+
+-- Update status immediately on load
+task.spawn(function()
+    task.wait(1) -- Wait for GUI to load
+    updateGoldStatus()
+end)
+
+-- Auto Open Haunted Chest Loop
+AutoOpenChestToggle:OnChanged(function(enabled)
+    if enabled then
+        task.spawn(function()
+            local ReplicatedStorage = game:GetService("ReplicatedStorage")
+            while AutoOpenChestToggle.Value do
+                local amtText = updateGoldStatus()
+                
+                if amtText then
+                    local amount = parseAmount(amtText)
+                    
+                    if amount >= 1 then
+                        pcall(function()
+                            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit.KnitClient)
+                            Knit.GetService("ChestService"):Open("HauntedChest")
+                        end)
+                        task.wait(0.25)
+                    else
+                        task.wait(1)
+                    end
+                else
+                    task.wait(1)
+                end
+            end
+        end)
+    end
+end)
+
 
 local CauldronSection = Tabs.Trick:Section("Cauldron Brewing")
 
