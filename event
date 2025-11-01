@@ -1953,7 +1953,7 @@ TowerSection1:AddButton({
         
         wait(0.5)
         local args = {"UnderworldTower", false}
-        TowerService.RF.EnterTower:InvokeServer(unpack(args))
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
     end
 })
 
@@ -1968,7 +1968,7 @@ TowerSection1:AddButton({
         
         wait(0.5)
         local args = {"UnderworldTower", true}
-        TowerService.RF.EnterTower:InvokeServer(unpack(args))
+        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer(unpack(args))
     end
 })
 
@@ -2019,7 +2019,7 @@ AutoTowerToggle1:OnChanged(function()
                     end)
                     wait(0.5)
                     pcall(function()
-                        TowerService.RF.EnterTower:InvokeServer("UnderworldTower", true)
+                        game:GetService("ReplicatedStorage").Packages.Knit.Services.TowerService.RF.EnterTower:InvokeServer("UnderworldTower", true)
                     end)
                 end
 
