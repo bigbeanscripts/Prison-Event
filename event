@@ -114,7 +114,7 @@ end)
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
-    if player:GetAttribute("MansionUnderworld") then
+    if player:GetAttribute("ZoneMansionUnderworld") then
         return "MansionUnderworld"
     elseif player:GetAttribute("ZoneMansionBasement") then
         return "MansionBasement"
@@ -817,6 +817,7 @@ local EggDropdown = Tabs.Eggs:AddDropdown("EggSelect", {
     Title = "Select Egg",
     Values = eggNames,
     Multi = false,
+    Searchable = true,
     Default = eggNames[1] or "None"
 })
 
