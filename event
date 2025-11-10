@@ -2178,7 +2178,6 @@ local function fireCupButtonWhenVisible(billboard)
     for _, conn in ipairs(getconnections(button.MouseButton1Click)) do
         conn:Fire()
     end
-    print("✅ Selected cup (button fired):", billboard.Adornee.Parent.Name)
     return true
 end
 
@@ -2192,7 +2191,6 @@ local function fireWinProceedButton()
     for _, conn in ipairs(getconnections(proceedButton.MouseButton1Click)) do
         conn:Fire()
     end
-    print("➡️ Fired CupWin Proceed button.")
 end
 
 local function fireWinCancelButton()
@@ -2205,7 +2203,6 @@ local function fireWinCancelButton()
     for _, conn in ipairs(getconnections(cancelButton.MouseButton1Click)) do
         conn:Fire()
     end
-    print("❌ No Cup Keys left. Fired CupWin Cancel button to leave game.")
 end
 
 local function startCupGameIfInactive()
@@ -2216,12 +2213,11 @@ local function startCupGameIfInactive()
             for _, conn in ipairs(getconnections(PlayNowButton.MouseButton1Click)) do
                 conn:Fire()
             end
-            print("🟢 Started Cup Minigame by firing PlayNow button.")
             task.wait(1)
         end
     end
 end
-
+    
 CupMinigameToggle:OnChanged(function()
     if CupMinigameToggle.Value then
         -- Make the round go instantly
@@ -2233,43 +2229,46 @@ CupMinigameToggle:OnChanged(function()
         spawn(function()
             while CupMinigameToggle.Value do
                 local cupKeyAmount = getCupKeyAmount()
-                print("🔑 Cup Key:", cupKeyAmount)
                 if cupKeyAmount == 0 then
                     fireWinCancelButton()
-                    break
+                    task.wait(3)
                 end
 
-                startCupGameIfInactive()
+                if not CupMinigameController.Stand and cupKeyAmount > 0 then
+                    startCupGameIfInactive()
+                    task.wait(1)
+                end
 
-                repeat task.wait(0.1) until CupMinigameController.Stand
-
-                local highlightedCup = nil
-                while not highlightedCup do
-                    for _, cup in pairs(CupMinigameController.Stand.Cups:GetChildren()) do
-                        local ball = CupMinigameController.Stand.Balls:FindFirstChild(cup.Name)
-                        if ball and ball.PrimaryPart and ball.PrimaryPart.Transparency == 0 then
-                            highlightCup(cup)
-                            highlightedCup = cup
-                            break
+                -- If in game, play the round
+                if CupMinigameController.Stand then
+                    local highlightedCup = nil
+                    while not highlightedCup and CupMinigameToggle.Value do
+                        for _, cup in pairs(CupMinigameController.Stand.Cups:GetChildren()) do
+                            local ball = CupMinigameController.Stand.Balls:FindFirstChild(cup.Name)
+                            if ball and ball.PrimaryPart and ball.PrimaryPart.Transparency == 0 then
+                                highlightCup(cup)
+                                highlightedCup = cup
+                                break
+                            end
                         end
+                        task.wait(0.1)
                     end
-                    task.wait(0.1)
-                end
 
-                task.wait(0.5)
+                    task.wait(0.5)
 
-                local billboard = CupMinigameController.CupBillboards[highlightedCup]
-                if billboard then
-                    fireCupButtonWhenVisible(billboard)
+                    local billboard = CupMinigameController.CupBillboards[highlightedCup]
+                    if billboard then
+                        fireCupButtonWhenVisible(billboard)
+                    else
+                    end
+
+                    task.wait(1)
+                    fireWinProceedButton()
+                    task.wait(2)
                 else
-                    print("❌ No billboard found for highlighted cup")
+                    -- Not in game, wait 3 seconds before checking again
+                    task.wait(3)
                 end
-
-                task.wait(1)
-
-                fireWinProceedButton()
-
-                task.wait(2)
             end
         end)
     end
