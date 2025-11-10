@@ -67,7 +67,8 @@ local Tabs = {
     Merchant = Window:AddTab({ Title = "Merchant", Icon = "phosphor-shopping-cart-fill" }),
     Trick = Window:AddTab({ Title = "Halloween", Icon = "ghost" }),
     Wheel = Window:AddTab({ Title = "Wheel", Icon = "ferris-wheel" }),
-    Tower = Window:AddTab({ Title = "Tower", Icon = "castle" })
+    Tower = Window:AddTab({ Title = "Tower", Icon = "castle" }),
+    Minigame = Window:AddTab({ Title = "Minigame", Icon = "phosphor-balloon-bold" })
 }
 
 
@@ -2116,6 +2117,163 @@ AutoTowerToggle1:OnChanged(function()
 end)
 
 
+local CupMinigameData = require(ReplicatedStorage.Data.Halloween.CupMinigame)
+local CupMinigameController = Knit.GetController("CupMinigameController")
+local CustomReplicaController = Knit.GetController("CustomReplicaController")
+
+local MinigameSection = Tabs.Minigame:AddSection("Cup Minigame")
+
+local CupMinigameToggle = MinigameSection:AddToggle("CupMinigameToggle", {
+    Title = "100% Cup Minigame (Auto)",
+    Description = "Automatically plays the cup minigame, always selects the right cup, and leaves when at 0 keys.",
+    Default = false
+})
+
+local CupParagraph = MinigameSection:Paragraph("CupParagraph", {
+    Title = "Shoutout",
+    Content = "A hugeeeeeeeeeeee thank you to a friend of mine who lent me over 100 cup keys to experiment with. I kept on wasting the keys with silly mistakes, but he kept giving me more and more keys/chances. Im not going to mention his name unless he wants me to, but thank you so much for the help!"
+})
+
+local currentHighlight
+
+local function highlightCup(cup)
+    if currentHighlight then
+        currentHighlight:Destroy()
+        currentHighlight = nil
+    end
+    local highlight = Instance.new("Highlight")
+    highlight.FillColor = Color3.new(0, 1, 0)
+    highlight.OutlineColor = Color3.new(1, 1, 0)
+    highlight.FillTransparency = 0.5
+    highlight.OutlineTransparency = 0
+    highlight.Adornee = cup
+    highlight.Parent = cup
+    currentHighlight = highlight
+end
+
+local oldEndRound = CupMinigameController.EndRound
+CupMinigameController.EndRound = function(...)
+    if currentHighlight then
+        currentHighlight:Destroy()
+        currentHighlight = nil
+    end
+    return oldEndRound(...)
+end
+
+local function getCupKeyAmount()
+    local replica = CustomReplicaController:GetReplica()
+    if replica and replica.Data and replica.Data.Items and replica.Data.Items.ItemInventory and replica.Data.Items.ItemInventory.Keys then
+        local keys = replica.Data.Items.ItemInventory.Keys
+        return (keys["Cup Key"] and keys["Cup Key"]["1"]) or (keys["CupKey"] and keys["CupKey"]["1"]) or 0
+    end
+    return 0
+end
+
+local function fireCupButtonWhenVisible(billboard)
+    local button = billboard:FindFirstChild("Button")
+    if not button then return false end
+    while not billboard.Enabled or not button.Visible do
+        task.wait(0.1)
+    end
+    for _, conn in ipairs(getconnections(button.MouseButton1Click)) do
+        conn:Fire()
+    end
+    print("✅ Selected cup (button fired):", billboard.Adornee.Parent.Name)
+    return true
+end
+
+local function fireWinProceedButton()
+    local LocalPlayer = Players.LocalPlayer
+    local CupWin = LocalPlayer.PlayerGui.GameUI.Menus.CupWin
+    local proceedButton = CupWin.Actions.Proceed.Button
+    while not proceedButton.Visible do
+        task.wait(0.1)
+    end
+    for _, conn in ipairs(getconnections(proceedButton.MouseButton1Click)) do
+        conn:Fire()
+    end
+    print("➡️ Fired CupWin Proceed button.")
+end
+
+local function fireWinCancelButton()
+    local LocalPlayer = Players.LocalPlayer
+    local CupWin = LocalPlayer.PlayerGui.GameUI.Menus.CupWin
+    local cancelButton = CupWin.Actions.Cancel.Button
+    while not cancelButton.Visible do
+        task.wait(0.1)
+    end
+    for _, conn in ipairs(getconnections(cancelButton.MouseButton1Click)) do
+        conn:Fire()
+    end
+    print("❌ No Cup Keys left. Fired CupWin Cancel button to leave game.")
+end
+
+local function startCupGameIfInactive()
+    if not CupMinigameController.Stand then
+        local LocalPlayer = game:GetService("Players").LocalPlayer
+        local PlayNowButton = LocalPlayer.PlayerGui.GameUI.Menus.CupEntrance.PlayNow.Button
+        if PlayNowButton and PlayNowButton.Visible then
+            for _, conn in ipairs(getconnections(PlayNowButton.MouseButton1Click)) do
+                conn:Fire()
+            end
+            print("🟢 Started Cup Minigame by firing PlayNow button.")
+            task.wait(1)
+        end
+    end
+end
+
+CupMinigameToggle:OnChanged(function()
+    if CupMinigameToggle.Value then
+        -- Make the round go instantly
+        CupMinigameData.Config.TimeMultiplier = 0.01
+        CupMinigameData.Config.StartSpeed = 99999
+        CupMinigameData.Config.SpeedPerRound = 99999
+        CupMinigameData.Config.MaxSpeed = 99999
+
+        spawn(function()
+            while CupMinigameToggle.Value do
+                local cupKeyAmount = getCupKeyAmount()
+                print("🔑 Cup Key:", cupKeyAmount)
+                if cupKeyAmount == 0 then
+                    fireWinCancelButton()
+                    break
+                end
+
+                startCupGameIfInactive()
+
+                repeat task.wait(0.1) until CupMinigameController.Stand
+
+                local highlightedCup = nil
+                while not highlightedCup do
+                    for _, cup in pairs(CupMinigameController.Stand.Cups:GetChildren()) do
+                        local ball = CupMinigameController.Stand.Balls:FindFirstChild(cup.Name)
+                        if ball and ball.PrimaryPart and ball.PrimaryPart.Transparency == 0 then
+                            highlightCup(cup)
+                            highlightedCup = cup
+                            break
+                        end
+                    end
+                    task.wait(0.1)
+                end
+
+                task.wait(0.5)
+
+                local billboard = CupMinigameController.CupBillboards[highlightedCup]
+                if billboard then
+                    fireCupButtonWhenVisible(billboard)
+                else
+                    print("❌ No billboard found for highlighted cup")
+                end
+
+                task.wait(1)
+
+                fireWinProceedButton()
+
+                task.wait(2)
+            end
+        end)
+    end
+end)
 
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
