@@ -1730,6 +1730,36 @@ local AutoClickTowerToggle = AutoClickSection:AddToggle("AutoClickTower", {
     Default = false
 })
 
+
+-- Variables for auto click
+local customAutoClickActive = false
+
+-- Function to perform custom clicks
+local function performCustomClicks()
+    while customAutoClickActive do
+        pcall(function()
+            local Knit = require(game:GetService("ReplicatedStorage").Packages.Knit)
+            local ArmWrestleController = Knit.GetController("ArmWrestleController")
+
+            if ArmWrestleController and ArmWrestleController.Fighting and ArmWrestleController.IsStarted then
+                ArmWrestleController.MouseClick(Enum.UserInputType.MouseButton1, false)
+            end
+        end)
+        task.wait(0.05) -- Click fast
+    end
+end
+
+AutoClickTowerToggle:OnChanged(function(enabled)
+    if enabled then
+        customAutoClickActive = true
+        task.spawn(performCustomClicks)
+    else
+        customAutoClickActive = false
+    end
+end)
+
+
+
 local TowerNote1 = AutoClickSection:Paragraph("TowerNote1", {
     Title = "Warning",
     Content = "Before joining a tower, turn of the auto click/crit toggle in the Auto Fight Section - Main tab. If left on, the tower will break and you will lose your keys. The toggle above is what you should use for towers.",
