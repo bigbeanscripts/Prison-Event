@@ -2145,6 +2145,7 @@ AutoTowerToggle1:OnChanged(function()
         end)
     end
 end)
+
 local CupMinigameData = require(ReplicatedStorage.Data.Halloween.CupMinigame)
 local CupMinigameController = Knit.GetController("CupMinigameController")
 local CustomReplicaController = Knit.GetController("CustomReplicaController")
@@ -2252,7 +2253,7 @@ CupMinigameToggle:OnChanged(function()
     if CupMinigameToggle.Value then
         -- Initialize starting keys and claim threshold
         startingKeys = getCupKeyAmount()
-        nextClaimThreshold = startingKeys - 25
+        nextClaimThreshold = startingKeys - 10
         
         -- Make the round go instantly
         CupMinigameData.Config.TimeMultiplier = 0.01
@@ -2261,15 +2262,19 @@ CupMinigameToggle:OnChanged(function()
         CupMinigameData.Config.MaxSpeed = 99999
 
         spawn(function()
+            local canContinue = true
+            
             while CupMinigameToggle.Value do
                 local cupKeyAmount = getCupKeyAmount()
                 
-                -- Check if we've used 10 keys and should claim rewards
-                if cupKeyAmount <= nextClaimThreshold and cupKeyAmount > 0 then
+                -- Check if we've hit a multiple of 10 keys
+                if cupKeyAmount % 10 == 0 and cupKeyAmount > 0 and cupKeyAmount < startingKeys then
+                    canContinue = false
+                    task.wait(3)
                     fireWinCancelButton()
                     task.wait(3)
-                    -- Update threshold for next claim (another 10 keys down)
-                    nextClaimThreshold = cupKeyAmount - 10
+                    startingKeys = cupKeyAmount
+                    canContinue = true
                 end
 
                 -- Stop if completely out of keys
@@ -2278,13 +2283,13 @@ CupMinigameToggle:OnChanged(function()
                     task.wait(3)
                 end
 
-                if not CupMinigameController.Stand and cupKeyAmount > 0 then
+                if canContinue and not CupMinigameController.Stand and cupKeyAmount > 0 then
                     startCupGameIfInactive()
                     task.wait(1)
                 end
 
                 -- If in game, play the round
-                if CupMinigameController.Stand then
+                if canContinue and CupMinigameController.Stand then
                     local highlightedCup = nil
                     while not highlightedCup and CupMinigameToggle.Value do
                         for _, cup in pairs(CupMinigameController.Stand.Cups:GetChildren()) do
@@ -2310,7 +2315,7 @@ CupMinigameToggle:OnChanged(function()
                     fireWinProceedButton()
                     task.wait(2)
                 else
-                    -- Not in game, wait 3 seconds before checking again
+                    -- Not in game or paused, wait 3 seconds before checking again
                     task.wait(3)
                 end
             end
