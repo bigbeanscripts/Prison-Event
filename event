@@ -2145,8 +2145,6 @@ AutoTowerToggle1:OnChanged(function()
         end)
     end
 end)
-
-
 local CupMinigameData = require(ReplicatedStorage.Data.Halloween.CupMinigame)
 local CupMinigameController = Knit.GetController("CupMinigameController")
 local CustomReplicaController = Knit.GetController("CustomReplicaController")
@@ -2155,7 +2153,7 @@ local MinigameSection = Tabs.Minigame:AddSection("Cup Minigame")
 
 local CupMinigameToggle = MinigameSection:AddToggle("CupMinigameToggle", {
     Title = "100% Cup Minigame (Auto)",
-    Description = "Automatically plays the cup minigame, always selects the right cup, and leaves when at 0 keys.",
+    Description = "Automatically plays the cup minigame, always selects the right cup, and claims rewards every 10 keys.",
     Default = false
 })
 
@@ -2165,6 +2163,8 @@ local CupParagraph = MinigameSection:Paragraph("CupParagraph", {
 })
 
 local currentHighlight
+local startingKeys = 0
+local nextClaimThreshold = 0
 
 local function highlightCup(cup)
     if currentHighlight then
@@ -2250,6 +2250,10 @@ end
     
 CupMinigameToggle:OnChanged(function()
     if CupMinigameToggle.Value then
+        -- Initialize starting keys and claim threshold
+        startingKeys = getCupKeyAmount()
+        nextClaimThreshold = startingKeys - 25
+        
         -- Make the round go instantly
         CupMinigameData.Config.TimeMultiplier = 0.01
         CupMinigameData.Config.StartSpeed = 99999
@@ -2259,6 +2263,16 @@ CupMinigameToggle:OnChanged(function()
         spawn(function()
             while CupMinigameToggle.Value do
                 local cupKeyAmount = getCupKeyAmount()
+                
+                -- Check if we've used 10 keys and should claim rewards
+                if cupKeyAmount <= nextClaimThreshold and cupKeyAmount > 0 then
+                    fireWinCancelButton()
+                    task.wait(3)
+                    -- Update threshold for next claim (another 10 keys down)
+                    nextClaimThreshold = cupKeyAmount - 10
+                end
+
+                -- Stop if completely out of keys
                 if cupKeyAmount == 0 then
                     fireWinCancelButton()
                     task.wait(3)
