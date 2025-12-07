@@ -1107,40 +1107,6 @@ OpenPresents:AddToggle("AutoClaimPresents", {
     end
 })
 
-local HauntedFortuneSection = Tabs.Christmas:AddSection("Festive Wheel")
-
-local GhostFortuneSpinDropdown = Tabs.Christmas:AddDropdown("GhostFortuneSpinAmount", {
-    Title = "Spin Amount",
-    Description = "Select Wheel Spin Amount",
-    Values = {"1x", "3x", "10x"},
-    Multi = false,
-    Default = "1x"
-})
-
-local AutoGhostFortuneToggle = Tabs.Christmas:AddToggle("AutoGhostFortuneSpin", {
-    Title = "Auto Festive Wheel",
-    Default = false
-})
-
-AutoGhostFortuneToggle:OnChanged(function()
-    if AutoGhostFortuneToggle.Value then
-        spawn(function()
-            while true do
-                if not AutoGhostFortuneToggle.Value then break end
-                
-                local args = {
-                    [1] = "Festive Fortune",
-                    [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
-                }
-                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
-                
-                wait(1)
-            end
-        end)
-    end
-end)
-
-
 local CalenderSection = Tabs.Christmas:AddSection("Advent Calender")
 
 local autoClaimAdventEnabled = false
@@ -1226,6 +1192,43 @@ OpenPresentsSection:AddToggle("AutoClaimMeteorPresents", {
         end
     end
 })
+
+
+
+local HauntedFortuneSection = Tabs.Christmas:AddSection("Festive Wheel")
+
+local GhostFortuneSpinDropdown = Tabs.Christmas:AddDropdown("GhostFortuneSpinAmount", {
+    Title = "Spin Amount",
+    Description = "Select Wheel Spin Amount",
+    Values = {"1x", "3x", "10x"},
+    Multi = false,
+    Default = "1x"
+})
+
+local AutoGhostFortuneToggle = Tabs.Christmas:AddToggle("AutoGhostFortuneSpin", {
+    Title = "Auto Festive Wheel",
+    Default = false
+})
+
+AutoGhostFortuneToggle:OnChanged(function()
+    if AutoGhostFortuneToggle.Value then
+        spawn(function()
+            while true do
+                if not AutoGhostFortuneToggle.Value then break end
+                
+                local args = {
+                    [1] = "Festive Fortune",
+                    [2] = GhostFortuneSpinDropdown.Value == "3x" and "x10" or GhostFortuneSpinDropdown.Value == "10x" and "x25" or nil
+                }
+                game:GetService("ReplicatedStorage").Packages.Knit.Services.SpinnerService.RF.Spin:InvokeServer(unpack(args))
+                
+                wait(1)
+            end
+        end)
+    end
+end)
+
+
 
 -- Hand the library over to our managers
 SaveManager:SetLibrary(Library)
