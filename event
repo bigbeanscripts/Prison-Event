@@ -80,7 +80,9 @@ local Tabs = {
     Eggs = Window:AddTab({ Title = "Eggs", Icon = "egg" }),
     Merchant = Window:AddTab({ Title = "Merchant", Icon = "phosphor-shopping-cart-fill" }),
     Tower = Window:AddTab({ Title = "Tower", Icon = "castle" }),
-    Christmas = Window:AddTab({ Title = "Christmas", Icon = "gift" }),
+    Christmas = Window:AddTab({ Title = "Christmas Stuff", Icon = "snowflake" }),
+    Gift = Window:AddTab({ Title = "Gift Machine", Icon = "gift" }),
+
 }
 
 
@@ -127,7 +129,9 @@ end)
 local function GetCurrentZone()
     local player = game.Players.LocalPlayer
 
-    if player:GetAttribute("NorthPole") then
+    if player:GetAttribute("ZoneToyFactory") then
+        return "ToyFactory"
+    elseif player:GetAttribute("ZoneNorthPole") then
         return "NorthPole"
     end
 
@@ -359,6 +363,7 @@ local FightSection = Tabs.AutoFight:AddSection("Auto Fight")
 
 local npcLocations = {
     NorthPole = workspace.GameObjects.ArmWrestling.NorthPole.NPC,
+    ToyFactory = workspace.GameObjects.ArmWrestling.ToyFactory.NPC,
 }
 
 local modelNames = {}
@@ -1056,18 +1061,21 @@ local ClaimCookiesSection = Tabs.Christmas:AddSection("Claim Cookies")
 
 ClaimCookiesSection:AddButton({
     Title = "Claim All Cookies",
-    Description = "You will need to rejoin to get the effects.",
-    Callback = function()
-        for i = 1,20 do
-            game:GetService("ReplicatedStorage").Packages.Knit.Services.CookieCollectService.RF.CollectCookie:InvokeServer(workspace.GameObjects.Cookies:GetChildren()[i])
-            wait(0.1)
+Callback = function()
+    local cookies = workspace.GameObjects.Cookies:GetChildren()
+
+    for i = 1, 15 do
+        local cookie = cookies[i]
+
+        if cookie and cookie:FindFirstChild("Primary") and cookie.Primary:FindFirstChild("ProximityPrompt") then
+            fireproximityprompt(cookie.Primary.ProximityPrompt)
+            task.wait(0.1)
         end
     end
-})
-    
+end})
+
 local OpenPresents = Tabs.Christmas:AddSection("Presents")
 
--- State variables to manage the toggle's loop
 local autoClaimPresentsEnabled = false
 local autoClaimPresentsThread = nil
 
@@ -1086,21 +1094,28 @@ OpenPresents:AddToggle("AutoClaimPresents", {
             autoClaimPresentsThread = task.spawn(function()
                 while autoClaimPresentsEnabled do
                     pcall(function()
-                        for i = 1, 10 do
+                        -- 1. Find all Present Models using the game's tag
+                        local presents = game:GetService("CollectionService"):GetTagged("DailyPresent")
+                        
+                        -- 2. Loop through and claim each one
+                        for _, presentModel in ipairs(presents) do
                             if not autoClaimPresentsEnabled then break end
-
-                            local presentModel = workspace.GameObjects.DailyPresents:GetChildren()[i]
-                            if presentModel then
-                                local args = {
-                                    [1] = presentModel
-                                }
-                                game:GetService("ReplicatedStorage").Packages.Knit.Services.DailyPresentService.RF.ClaimPresent:InvokeServer(unpack(args))
-                                task.wait(0.25)
-                                print("claimed")
-                            end 
-                        end 
+                            
+                            -- Fire the RemoteFunction exactly like SimpleSpy
+                            -- Arg 1 is the Model Instance found by the tag
+                            task.spawn(function()
+                                pcall(function()
+                                    local args = {
+                                        [1] = presentModel
+                                    }
+                                    game:GetService("ReplicatedStorage").Packages.Knit.Services.DailyPresentService.RF.ClaimPresent:InvokeServer(unpack(args))
+                                end)
+                            end)
+                            
+                            task.wait(0.1) 
+                        end
                     end)
-                    task.wait(30)
+                    task.wait(20) -- Check again every 20 seconds
                 end
             end)
         end
@@ -1145,7 +1160,6 @@ CalenderSection:AddToggle("AutoClaimAdvent", {
 
 local OpenPresentsSection = Tabs.Christmas:AddSection("Meteor Shower")
 
--- State variables to manage the toggle's loop
 local autoClaimMeteorPresentsEnabled = false
 local autoClaimMeteorPresentsThread = nil
 
@@ -1162,30 +1176,26 @@ OpenPresentsSection:AddToggle("AutoClaimMeteorPresents", {
 
         if enabled then
             autoClaimMeteorPresentsThread = task.spawn(function()
-                local presentDestroyedRemote = game:GetService("ReplicatedStorage").Packages.Knit.Services.MeteorShowerService.RF.PresentDestroyed
+                local presentDestroyedRemote =
+                    game:GetService("ReplicatedStorage").Packages.Knit.Services.MeteorShowerService.RF.PresentDestroyed
 
                 while autoClaimMeteorPresentsEnabled do
+
                     pcall(function()
                         local presentsFolder = workspace.GameObjects.Presents
-                        
-                        -- Loop through all children in the folder
-                        for _, presentModel in ipairs(presentsFolder:GetChildren()) do
-                            -- If the toggle was turned off mid-cycle, stop immediately
-                            if not autoClaimMeteorPresentsEnabled then break end
-                            local presentId = presentModel:GetAttribute("Id")
+                        local children = presentsFolder:GetChildren()
 
+                        -- Loop all detected presents
+                        for _, presentModel in ipairs(children) do
+                            if not autoClaimMeteorPresentsEnabled then return end
+
+                            local presentId = presentModel:GetAttribute("Id")
                             if presentId then
-                                local args = {
-                                    [1] = tostring(presentId) 
-                                }
-                                
-                                presentDestroyedRemote:InvokeServer(unpack(args))
-                                
-                                task.wait(0.1)
+                                presentDestroyedRemote:InvokeServer(tostring(presentId))
+                                task.wait(0.1) -- delay between claiming each
                             end
                         end
                     end)
-
                     task.wait(5)
                 end
             end)
@@ -1228,6 +1238,158 @@ AutoGhostFortuneToggle:OnChanged(function()
     end
 end)
 
+
+local GiftMachineSection = Tabs.Gift:AddSection("Gift Machine")
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local Knit = require(ReplicatedStorage.Packages.Knit)
+local GiftMachineService = Knit.GetService("GiftMachineService")
+local CustomReplicaController = Knit.GetController("CustomReplicaController")
+local LocalPlayer = Players.LocalPlayer
+
+local autoClaimEnabled = false
+local autoUpgradeEnabled = false
+local selectedUpgrades = {}
+
+ReplicatedStorage = game:GetService("ReplicatedStorage")
+local GiftMachineData = require(ReplicatedStorage.Data.GiftMachine)
+
+local allZones = {}
+local availableUpgrades = {}
+
+for zoneName, zoneData in pairs(GiftMachineData) do
+    table.insert(allZones, zoneName)
+    
+    if zoneData.Upgrades then
+        for upgradeName, _ in pairs(zoneData.Upgrades) do
+            local found = false
+            for _, v in ipairs(availableUpgrades) do
+                if v == upgradeName then found = true break end
+            end
+            if not found then table.insert(availableUpgrades, upgradeName) end
+        end
+    end
+end
+table.sort(availableUpgrades)
+
+local function getCurrency(currencyName)
+    local val = LocalPlayer:GetAttribute(currencyName) or 0
+    return val
+end
+
+local function getNextCost(zone, upgradeName, currentLevel)
+    local zoneData = GiftMachineData[zone]
+    if not zoneData or not zoneData.Upgrades then return math.huge end
+    
+    local info = zoneData.Upgrades[upgradeName]
+    if not info then return math.huge end
+    
+    local baseCost = info.Cost
+    local multi = info.CostMulti or 0
+    
+    local calculated = baseCost + (multi * currentLevel)
+    return calculated
+end
+
+GiftMachineSection:Toggle("AutoClaimGiftParts", {
+    Title = "Auto Claim Gift Parts",
+    Default = false,
+    Callback = function(Value)
+        autoClaimEnabled = Value
+        if Value then
+            task.spawn(function()
+                while autoClaimEnabled do
+                    pcall(function()
+                        local data = CustomReplicaController:GetReplica().Data
+                        
+                        for _, zone in ipairs(allZones) do
+                            local machineData = data.GiftMachineData[zone]
+                            
+                            if machineData then
+
+                                if machineData.TimeLeft <= 0 or machineData.Output > 0 then
+                                    local args = {
+                                        [1] = "ToyFactory"
+                                    }
+                                    game:GetService("ReplicatedStorage").Packages.Knit.Services.GiftMachineService.RF.Claim:InvokeServer(unpack(args))
+                                end
+                            end
+                        end
+                    end)
+                    task.wait(1)
+                end
+            end)
+        end
+    end
+})
+
+
+GiftMachineSection:Dropdown("SelectGiftUpgrades", {
+    Title = "Select Upgrades",
+    Values = availableUpgrades,
+    Multi = true,
+    Default = {},
+    Callback = function(Value)
+        selectedUpgrades = Value
+    end
+})
+
+GiftMachineSection:Toggle("AutoUpgradeGift", {
+    Title = "Auto Upgrade",
+    Default = false,
+    Callback = function(Value)
+        autoUpgradeEnabled = Value
+        if Value then
+            task.spawn(function()
+                while autoUpgradeEnabled do
+                    pcall(function()
+                        local replica = CustomReplicaController:GetReplica().Data
+                        
+                        for _, zone in ipairs(allZones) do
+                            local machineData = replica.GiftMachineData[zone]
+                            
+                            if machineData and machineData.Upgrades then
+                                for upgradeName, isSelected in pairs(selectedUpgrades) do
+                                    if isSelected and autoUpgradeEnabled then
+                                        
+                                        local staticInfo = GiftMachineData[zone].Upgrades[upgradeName]
+                                        
+                                        if staticInfo then
+                                            local storedLevel = machineData.Upgrades[upgradeName] or 1
+                                            local mathLevel = storedLevel - 1
+                                            
+                                            if storedLevel < staticInfo.Max then
+                                                local baseCost = tonumber(staticInfo.Cost) or 0
+                                                local costMulti = tonumber(staticInfo.CostMulti) or 0
+                                                local nextCost = baseCost + (costMulti * mathLevel)
+                                                
+                                                local currencyName = staticInfo.Currency
+                                                local myBalance = tonumber(getCurrency(currencyName)) or 0
+                                                
+                                                if myBalance >= nextCost then
+
+                                                    local success, err = pcall(function()
+                                                        game:GetService("ReplicatedStorage").Packages.Knit.Services.GiftMachineService.RF.PurchaseUpgrade:InvokeServer("ToyFactory", upgradeName)
+                                                    end)
+                                                    
+                                                    if success then
+                                                        task.wait(0.5) 
+                                                    end
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end)
+                    task.wait(1) 
+                end
+            end)
+        end
+    end
+})
 
 
 -- Hand the library over to our managers
